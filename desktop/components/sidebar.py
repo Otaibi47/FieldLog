@@ -16,7 +16,7 @@ class Sidebar(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # App identity
+        # App brand
         brand = ctk.CTkFrame(self, fg_color="transparent")
         brand.pack(fill="x", padx=20, pady=(28, 22))
 
@@ -35,7 +35,6 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(anchor="w", pady=(3, 0))
 
-        # Divider
         ctk.CTkFrame(self, height=1, fg_color="#334155", corner_radius=0).pack(fill="x")
 
         ctk.CTkLabel(
@@ -55,6 +54,7 @@ class Sidebar(ctk.CTkFrame):
             self._make_item(key, label)
 
     def _make_item(self, key: str, label: str):
+        # Container row
         outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=6)
         outer.pack(fill="x", padx=10, pady=2)
 
@@ -63,22 +63,31 @@ class Sidebar(ctk.CTkFrame):
         rule.pack(side="left", fill="y")
         rule.pack_propagate(False)
 
-        # Solid fg_color — avoids the CTk transparent-button rendering bug
-        btn = ctk.CTkButton(
+        # CTkLabel — more reliable than CTkButton for nav items on Windows
+        lbl = ctk.CTkLabel(
             outer,
             text=label,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=SIDEBAR_BG,
             text_color=SIDEBAR_TEXT,
-            hover_color=SIDEBAR_HOVER,
+            fg_color="transparent",
             anchor="w",
-            corner_radius=4,
-            height=38,
-            command=lambda k=key: self._navigate(k),
+            cursor="hand2",
         )
-        btn.pack(fill="both", expand=True, padx=(4, 4))
+        lbl.pack(fill="x", padx=(8, 8), pady=9)
 
-        self._items[key] = {"outer": outer, "rule": rule, "btn": btn}
+        # Click + hover bindings on all three widgets so the whole row is a target
+        for widget in (outer, rule, lbl):
+            widget.bind("<Button-1>", lambda e, k=key: self._navigate(k))
+        for widget in (outer, lbl):
+            widget.bind("<Enter>", lambda e, o=outer, k=key: self._on_hover(o, k, True))
+            widget.bind("<Leave>", lambda e, o=outer, k=key: self._on_hover(o, k, False))
+
+        self._items[key] = {"outer": outer, "rule": rule, "lbl": lbl}
+
+    def _on_hover(self, outer, key: str, entering: bool):
+        if key == self._active:
+            return
+        outer.configure(fg_color=SIDEBAR_HOVER if entering else SIDEBAR_BG)
 
     def _navigate(self, key: str):
         self._active = key
@@ -90,28 +99,20 @@ class Sidebar(ctk.CTkFrame):
             if key == self._active:
                 item["outer"].configure(fg_color=SIDEBAR_ACTIVE_BG)
                 item["rule"].configure(fg_color=SIDEBAR_RULE)
-                item["btn"].configure(
-                    fg_color=SIDEBAR_ACTIVE_BG,
-                    hover_color=SIDEBAR_ACTIVE_BG,
-                    text_color=SIDEBAR_TEXT_ACTIVE,
-                )
+                item["lbl"].configure(text_color=SIDEBAR_TEXT_ACTIVE)
             else:
                 item["outer"].configure(fg_color=SIDEBAR_BG)
                 item["rule"].configure(fg_color=SIDEBAR_BG)
-                item["btn"].configure(
-                    fg_color=SIDEBAR_BG,
-                    hover_color=SIDEBAR_HOVER,
-                    text_color=SIDEBAR_TEXT,
-                )
+                item["lbl"].configure(text_color=SIDEBAR_TEXT)
 
     def set_alert_count(self, count: int):
         item = self._items.get("alerts")
         if not item:
             return
-        item["btn"].configure(text=f"Alerts  ({count})" if count > 0 else "Alerts")
+        item["lbl"].configure(text=f"Alerts  ({count})" if count > 0 else "Alerts")
         if self._active != "alerts":
-            item["btn"].configure(
-                text_color="#F87171" if count > 0 else SIDEBAR_TEXT  # red-400, visible on dark
+            item["lbl"].configure(
+                text_color="#F87171" if count > 0 else SIDEBAR_TEXT
             )
 
     def set_active(self, key: str):
