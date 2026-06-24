@@ -31,31 +31,23 @@ class FieldLogApp(ctk.CTk):
         self._build()
         self._navigate("dashboard")
 
-        # Init token + first data load in background so window opens immediately
         threading.Thread(target=self._init_backend, daemon=True).start()
 
     def _build(self):
-        self.grid_columnconfigure(0, weight=0)   # sidebar — fixed
-        self.grid_columnconfigure(1, weight=0)   # separator — 1px
-        self.grid_columnconfigure(2, weight=1)   # content — expands
+        self.grid_columnconfigure(0, weight=0)  # sidebar 210px — fixed
+        self.grid_columnconfigure(1, weight=1)  # content  — expands
         self.grid_rowconfigure(0, weight=1)
 
         self.sidebar = Sidebar(self, on_navigate=self._navigate)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
-        # 1px border between sidebar and content
-        ctk.CTkFrame(self, width=1, fg_color="#E5E7EB", corner_radius=0).grid(
-            row=0, column=1, sticky="nsew"
-        )
-
         self.content_frame = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
-        self.content_frame.grid(row=0, column=2, sticky="nsew")
+        self.content_frame.grid(row=0, column=1, sticky="nsew")
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
 
     def _init_backend(self):
         self.api.init_token()
-        # Refresh the screen that's already visible
         self.after(0, self._refresh_current)
         self.after(0, self._check_alerts)
 
@@ -83,10 +75,10 @@ class FieldLogApp(ctk.CTk):
 
     def _build_screen(self, key: str):
         cls_map = {
-            "dashboard": DashboardScreen,
-            "equipment": EquipmentScreen,
+            "dashboard":   DashboardScreen,
+            "equipment":   EquipmentScreen,
             "maintenance": MaintenanceScreen,
-            "alerts": AlertsScreen,
+            "alerts":      AlertsScreen,
         }
         cls = cls_map.get(key)
         return cls(master=self.content_frame, api_client=self.api) if cls else ctk.CTkFrame(self.content_frame)
