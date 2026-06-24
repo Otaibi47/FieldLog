@@ -1,5 +1,5 @@
+import threading
 import customtkinter as ctk
-from datetime import date
 from components.data_table import DataTable
 from components.status_badge import StatusBadge
 from config import (
@@ -8,215 +8,319 @@ from config import (
 )
 
 
+# ─────────────────────────── screen ──────────────────────────────────────────
+
 class EquipmentScreen(ctk.CTkFrame):
     def __init__(self, master, api_client, **kwargs):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
         self._build()
-        self.refresh()
 
     def _build(self):
-        # Header row
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(24, 8))
+        # Page header
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.pack(fill="x", padx=24, pady=(28, 0))
 
+        left = ctk.CTkFrame(hdr, fg_color="transparent")
+        left.pack(side="left", fill="y")
         ctk.CTkLabel(
-            header,
-            text="Equipment",
+            left, text="Equipment",
             font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        ).pack(side="left")
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            left, text="Register and manage your field equipment",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
 
         ctk.CTkButton(
-            header,
-            text="+ Add Equipment",
+            hdr, text="+ Add Equipment",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=ACCENT,
-            hover_color="#1E40AF",
-            corner_radius=6,
+            fg_color=ACCENT, hover_color="#1E40AF",
+            corner_radius=6, height=36,
             command=self._open_add_form,
-        ).pack(side="right")
+        ).pack(side="right", anchor="center")
+
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(16, 0)
+        )
 
         # Table
         self._table = DataTable(
             self,
             columns=[
-                ("Name", 3),
-                ("Type", 2),
-                ("Location", 3),
-                ("Status", 2),
-                ("Next Due", 2),
-                ("Actions", 2),
+                ("Name",     210),
+                ("Type",     100),
+                ("Location", 170),
+                ("Status",   130),
+                ("Next Due", 110),
+                ("Actions",  130),
             ],
-            height=500,
+            height=520,
         )
-        self._table.pack(fill="both", expand=True, padx=24, pady=(0, 24))
+        self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+
+    # ------------------------------------------------------------------ data
 
     def refresh(self):
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _load(self):
         try:
             items = self.api.get_equipment()
         except Exception:
             items = []
+        self.after(0, lambda d=items: self._render(d))
 
+    def _render(self, items):
         self._table.clear_rows()
+
+        if not items:
+            # empty state handled naturally — table shows only header
+            return
+
         for i, item in enumerate(items):
-            badge = StatusBadge(self._table, status=item.get("status", "operational"))
 
-            actions = ctk.CTkFrame(self._table, fg_color="transparent")
-            edit_btn = ctk.CTkButton(
-                actions,
-                text="Edit",
-                width=48,
-                height=24,
-                font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                fg_color="transparent",
-                text_color=ACCENT,
-                hover_color="#EFF6FF",
-                corner_radius=4,
-                command=lambda it=item: self._open_edit_form(it),
-            )
-            edit_btn.pack(side="left", padx=(0, 4))
+            def make_badge(status):
+                def _b(f):
+                    StatusBadge(f, status=status).pack(anchor="w", pady=4)
+                return _b
 
-            del_btn = ctk.CTkButton(
-                actions,
-                text="Delete",
-                width=54,
-                height=24,
-                font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                fg_color="transparent",
-                text_color=DANGER,
-                hover_color="#FEF2F2",
-                corner_radius=4,
-                command=lambda it=item: self._confirm_delete(it),
-            )
-            del_btn.pack(side="left")
+            def make_actions(it):
+                def _b(f):
+                    ctk.CTkButton(
+                        f, text="Edit", width=46, height=28,
+                        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                        fg_color=SURFACE, text_color=ACCENT,
+                        border_width=1, border_color=BORDER,
+                        hover_color="#EFF6FF", corner_radius=4,
+                        command=lambda: self._open_edit_form(it),
+                    ).pack(side="left", padx=(0, 6))
+                    ctk.CTkButton(
+                        f, text="Delete", width=54, height=28,
+                        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                        fg_color="transparent", text_color=DANGER,
+                        hover_color="#FEF2F2", corner_radius=4,
+                        command=lambda: self._confirm_delete(it),
+                    ).pack(side="left")
+                return _b
 
-            self._table.add_row(
-                [
-                    item.get("name", "—"),
-                    item.get("type", "—").title(),
-                    item.get("location", "—"),
-                    badge,
-                    item.get("next_maintenance_due", "—"),
-                    actions,
-                ],
-                even=(i % 2 == 1),
-            )
+            self._table.add_row([
+                item.get("name", "—"),
+                item.get("type", "—").title(),
+                item.get("location", "—"),
+                make_badge(item.get("status", "operational")),
+                item.get("next_maintenance_due", "—"),
+                make_actions(item),
+            ], even=(i % 2 == 1))
+
+    # ------------------------------------------------------------------ actions
 
     def _open_add_form(self):
         EquipmentFormModal(self, self.api, on_save=self.refresh)
 
-    def _open_edit_form(self, item: dict):
+    def _open_edit_form(self, item):
         EquipmentFormModal(self, self.api, on_save=self.refresh, item=item)
 
-    def _confirm_delete(self, item: dict):
+    def _confirm_delete(self, item):
         dlg = ctk.CTkToplevel(self)
         dlg.title("Confirm Delete")
-        dlg.geometry("360x140")
+        dlg.geometry("400x160")
         dlg.resizable(False, False)
+        dlg.configure(fg_color=SURFACE)
         dlg.grab_set()
+
+        ctk.CTkFrame(dlg, height=4, fg_color=DANGER, corner_radius=0).pack(fill="x")
+
         ctk.CTkLabel(
             dlg,
-            text=f"Delete \"{item['name']}\"?\nThis will also remove all maintenance logs.",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            text_color=TEXT_PRIMARY,
-        ).pack(pady=(24, 16))
-        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
-        btn_row.pack()
+            text=f"Delete \"{item['name']}\"?",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(anchor="w", padx=24, pady=(18, 2))
+        ctk.CTkLabel(
+            dlg,
+            text="This will also remove all maintenance logs for this equipment.",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="w", padx=24)
+
+        foot = ctk.CTkFrame(dlg, fg_color="transparent")
+        foot.pack(anchor="e", padx=24, pady=16)
         ctk.CTkButton(
-            btn_row, text="Cancel", fg_color="#F3F4F6", text_color=TEXT_PRIMARY,
-            hover_color=BORDER, corner_radius=6, command=dlg.destroy,
-        ).pack(side="left", padx=8)
+            foot, text="Cancel", width=80,
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_width=1, border_color=BORDER,
+            hover_color=BG, corner_radius=6,
+            command=dlg.destroy,
+        ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
-            btn_row, text="Delete", fg_color=DANGER, hover_color="#B91C1C",
-            corner_radius=6, command=lambda: self._do_delete(item["id"], dlg),
+            foot, text="Delete", width=80,
+            fg_color=DANGER, hover_color="#B91C1C",
+            corner_radius=6,
+            command=lambda: self._do_delete(item["id"], dlg),
         ).pack(side="left")
 
-    def _do_delete(self, item_id: str, dlg):
-        try:
-            self.api.delete_equipment(item_id)
-        except Exception:
-            pass
+    def _do_delete(self, item_id, dlg):
         dlg.destroy()
-        self.refresh()
+        def _run():
+            try:
+                self.api.delete_equipment(item_id)
+            except Exception:
+                pass
+            self.after(0, self.refresh)
+        threading.Thread(target=_run, daemon=True).start()
 
+
+# ─────────────────────────── modal ───────────────────────────────────────────
 
 class EquipmentFormModal(ctk.CTkToplevel):
     def __init__(self, master, api_client, on_save, item: dict = None):
         super().__init__(master)
-        self.api = api_client
-        self.on_save = on_save
-        self.item = item
+        self.api      = api_client
+        self.on_save  = on_save
+        self.item     = item
+        self.configure(fg_color=SURFACE)
         self.title("Edit Equipment" if item else "Add Equipment")
-        self.geometry("480x540")
+        self.geometry("500x620")
         self.resizable(False, False)
         self.grab_set()
         self._build()
 
     def _build(self):
-        form = ctk.CTkScrollableFrame(self, fg_color="white")
-        form.pack(fill="both", expand=True, padx=24, pady=24)
+        # Modal header
+        ctk.CTkFrame(self, height=4, fg_color=ACCENT, corner_radius=0).pack(fill="x")
 
-        def field(label, placeholder="", default=""):
-            ctk.CTkLabel(form, text=label, font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                         text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-            entry = ctk.CTkEntry(form, placeholder_text=placeholder,
-                                 font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                                 corner_radius=6, border_color=BORDER, height=36)
-            if default:
-                entry.insert(0, default)
-            entry.pack(fill="x")
-            return entry
+        title_bar = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
+        title_bar.pack(fill="x", padx=24, pady=(16, 0))
+        ctk.CTkLabel(
+            title_bar,
+            text="Edit Equipment" if self.item else "Add Equipment",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            title_bar,
+            text="Update details for this field unit" if self.item else "Register a new field unit",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
+
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(14, 0)
+        )
+
+        # Scrollable form body
+        body = ctk.CTkScrollableFrame(self, fg_color=SURFACE, corner_radius=0)
+        body.pack(fill="both", expand=True)
 
         v = self.item or {}
-        self._name = field("Equipment Name", "e.g. Compressor Unit C-04", v.get("name", ""))
-        self._type_var = ctk.StringVar(value=v.get("type", "compressor"))
-        ctk.CTkLabel(form, text="Type", font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                     text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-        ctk.CTkOptionMenu(form, values=["compressor", "pipeline", "rig", "pump", "valve", "other"],
-                          variable=self._type_var, font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                          corner_radius=6, fg_color=SURFACE, button_color=ACCENT,
-                          ).pack(fill="x")
-        self._location = field("Location", "e.g. Block 7 - North Field", v.get("location", ""))
-        self._status_var = ctk.StringVar(value=v.get("status", "operational"))
-        ctk.CTkLabel(form, text="Status", font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                     text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-        ctk.CTkOptionMenu(form, values=["operational", "degraded", "offline"],
-                          variable=self._status_var, font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                          corner_radius=6, fg_color=SURFACE, button_color=ACCENT,
-                          ).pack(fill="x")
-        self._last_maint = field("Last Maintenance Date (YYYY-MM-DD)", "2024-01-15",
-                                 v.get("last_maintenance_date", "") or "")
-        self._next_due = field("Next Maintenance Due (YYYY-MM-DD)", "2024-07-15",
-                               v.get("next_maintenance_due", "") or "")
-        self._notes = field("Notes (optional)", "", v.get("notes", "") or "")
 
-        btn_row = ctk.CTkFrame(self, fg_color="transparent")
-        btn_row.pack(pady=16)
-        ctk.CTkButton(btn_row, text="Cancel", fg_color="#F3F4F6", text_color=TEXT_PRIMARY,
-                      hover_color=BORDER, corner_radius=6, command=self.destroy).pack(side="left", padx=8)
-        ctk.CTkButton(btn_row, text="Save", fg_color=ACCENT, hover_color="#1E40AF",
-                      corner_radius=6, command=self._save).pack(side="left")
+        self._name     = _field(body, "Equipment Name",                   "e.g. Compressor Unit C-04",  v.get("name", ""))
+        self._type_var = _dropdown(body, "Type",                          ["compressor","pipeline","rig","pump","valve","other"], v.get("type","compressor"))
+        self._location = _field(body, "Location",                         "e.g. Block 7 - North Field",  v.get("location",""))
+        self._status_var = _dropdown(body, "Status",                      ["operational","degraded","offline"],                   v.get("status","operational"))
+        self._last_maint = _field(body, "Last Maintenance (YYYY-MM-DD)",   "2024-01-15",                  v.get("last_maintenance_date","") or "")
+        self._next_due   = _field(body, "Next Due Date (YYYY-MM-DD)",       "2024-07-15",                  v.get("next_maintenance_due","") or "")
+        self._notes      = _field(body, "Notes (optional)",                 "",                            v.get("notes","") or "")
+
+        self._error = ctk.CTkLabel(
+            body, text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=DANGER, fg_color="transparent",
+        )
+        self._error.pack(anchor="w", padx=24, pady=(4, 0))
+
+        # Modal footer
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(fill="x")
+        foot = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
+        foot.pack(fill="x", padx=24, pady=16)
+
+        ctk.CTkButton(
+            foot, text="Cancel", width=88,
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_width=1, border_color=BORDER,
+            hover_color=BG, corner_radius=6,
+            command=self.destroy,
+        ).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(
+            foot, text="Save Equipment", width=130,
+            fg_color=ACCENT, hover_color="#1E40AF",
+            corner_radius=6,
+            command=self._save,
+        ).pack(side="right")
 
     def _save(self):
         data = {
-            "name": self._name.get().strip(),
-            "type": self._type_var.get(),
-            "location": self._location.get().strip(),
-            "status": self._status_var.get(),
+            "name":                 self._name.get().strip(),
+            "type":                 self._type_var.get(),
+            "location":             self._location.get().strip(),
+            "status":               self._status_var.get(),
             "next_maintenance_due": self._next_due.get().strip(),
-            "notes": self._notes.get().strip() or None,
+            "notes":                self._notes.get().strip() or None,
         }
         last = self._last_maint.get().strip()
         if last:
             data["last_maintenance_date"] = last
-        try:
-            if self.item:
-                self.api.update_equipment(self.item["id"], data)
-            else:
-                self.api.create_equipment(data)
-            self.on_save()
-            self.destroy()
-        except Exception as e:
-            ctk.CTkLabel(self, text=f"Error: {e}", text_color=DANGER,
-                         font=ctk.CTkFont(family=FONT_FAMILY, size=12)).pack()
+
+        def _run():
+            try:
+                if self.item:
+                    self.api.update_equipment(self.item["id"], data)
+                else:
+                    self.api.create_equipment(data)
+                self.after(0, lambda: (self.on_save(), self.destroy()))
+            except Exception as e:
+                self.after(0, lambda err=str(e): self._error.configure(text=f"Error: {err}"))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+
+# ─────────────────────────── shared form helpers ─────────────────────────────
+
+def _field(parent, label: str, placeholder: str = "", default: str = "") -> ctk.CTkEntry:
+    ctk.CTkLabel(
+        parent, text=label,
+        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+        text_color=TEXT_SECONDARY, fg_color="transparent", anchor="w",
+    ).pack(fill="x", padx=24, pady=(12, 2))
+    e = ctk.CTkEntry(
+        parent,
+        placeholder_text=placeholder,
+        font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+        fg_color=SURFACE,
+        border_color=BORDER,
+        border_width=1,
+        corner_radius=6,
+        height=38,
+    )
+    if default:
+        e.insert(0, default)
+    e.pack(fill="x", padx=24)
+    return e
+
+
+def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
+    ctk.CTkLabel(
+        parent, text=label,
+        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+        text_color=TEXT_SECONDARY, fg_color="transparent", anchor="w",
+    ).pack(fill="x", padx=24, pady=(12, 2))
+    var = ctk.StringVar(value=current)
+    ctk.CTkOptionMenu(
+        parent,
+        values=values,
+        variable=var,
+        font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+        fg_color=SURFACE,
+        button_color="#E5E7EB",
+        button_hover_color="#D1D5DB",
+        text_color=TEXT_PRIMARY,
+        dropdown_fg_color=SURFACE,
+        dropdown_text_color=TEXT_PRIMARY,
+        dropdown_hover_color="#EFF6FF",
+        corner_radius=6,
+        height=38,
+    ).pack(fill="x", padx=24)
+    return var

@@ -1,10 +1,10 @@
+import threading
 import customtkinter as ctk
-from datetime import datetime
 from components.stat_card import StatCard
 from components.data_table import DataTable
 from config import (
-    BG, TEXT_PRIMARY, TEXT_SECONDARY, FONT_FAMILY,
-    DANGER, DANGER_LIGHT, BORDER, SURFACE, WARNING, SUCCESS,
+    BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT, SUCCESS, WARNING, DANGER, DANGER_LIGHT, FONT_FAMILY,
 )
 
 
@@ -13,110 +13,150 @@ class DashboardScreen(ctk.CTkScrollableFrame):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
         self._build()
-        self.refresh()
+
+    # ------------------------------------------------------------------ layout
 
     def _build(self):
-        # Page title
+        self._build_header()
+        self._build_stat_cards()
+        self._build_recent_section()
+        self._build_alerts_section()
+
+    def _build_header(self):
+        wrap = ctk.CTkFrame(self, fg_color="transparent")
+        wrap.pack(fill="x", padx=24, pady=(28, 0))
+
         ctk.CTkLabel(
-            self,
+            wrap,
             text="Dashboard",
             font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
             text_color=TEXT_PRIMARY,
-        ).pack(anchor="w", pady=(24, 2))
+            fg_color="transparent",
+        ).pack(anchor="w")
         ctk.CTkLabel(
-            self,
+            wrap,
             text="Overview of equipment health and recent activity",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             text_color=TEXT_SECONDARY,
-        ).pack(anchor="w", pady=(0, 20))
+            fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
 
-        # Stat cards row
-        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
-        cards_frame.pack(fill="x", pady=(0, 24))
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(16, 0)
+        )
+
+    def _build_stat_cards(self):
+        grid = ctk.CTkFrame(self, fg_color="transparent")
+        grid.pack(fill="x", padx=24, pady=(20, 0))
         for i in range(4):
-            cards_frame.columnconfigure(i, weight=1)
+            grid.columnconfigure(i, weight=1)
 
-        self._card_total = StatCard(cards_frame, "🔧", "—", "Total Equipment")
+        self._card_total = StatCard(
+            grid, icon="⚙", value="—", label="Total Equipment",
+            accent_color=ACCENT,
+        )
         self._card_total.grid(row=0, column=0, padx=(0, 8), sticky="ew")
 
-        self._card_operational = StatCard(cards_frame, "✅", "—", "Operational", value_color=SUCCESS)
-        self._card_operational.grid(row=0, column=1, padx=4, sticky="ew")
+        self._card_op = StatCard(
+            grid, icon="✓", value="—", label="Operational",
+            accent_color=SUCCESS,
+        )
+        self._card_op.grid(row=0, column=1, padx=4, sticky="ew")
 
-        self._card_overdue = StatCard(cards_frame, "⚠️", "—", "Overdue", value_color=DANGER)
+        self._card_overdue = StatCard(
+            grid, icon="!", value="—", label="Overdue",
+            accent_color=DANGER,
+        )
         self._card_overdue.grid(row=0, column=2, padx=4, sticky="ew")
 
-        self._card_logs = StatCard(cards_frame, "📋", "—", "Logs This Month")
+        self._card_logs = StatCard(
+            grid, icon="#", value="—", label="Logs This Month",
+            accent_color=WARNING,
+        )
         self._card_logs.grid(row=0, column=3, padx=(8, 0), sticky="ew")
 
-        # Recent Maintenance section
-        ctk.CTkLabel(
-            self,
-            text="Recent Maintenance",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        ).pack(anchor="w", pady=(0, 8))
+    def _build_recent_section(self):
+        self._section_header("Recent Maintenance", padx=24, pady=(28, 10))
 
         self._recent_table = DataTable(
             self,
-            columns=[("Equipment", 3), ("Type", 2), ("Performed By", 2), ("Date", 2), ("Next Due", 2)],
-            height=180,
+            columns=[
+                ("Equipment",    180),
+                ("Type",         100),
+                ("Performed By", 150),
+                ("Date",         110),
+                ("Next Due",     110),
+            ],
+            height=220,
         )
-        self._recent_table.pack(fill="x", pady=(0, 24))
+        self._recent_table.pack(fill="x", padx=24)
 
-        # Overdue Alerts section
+    def _build_alerts_section(self):
+        self._section_header("Overdue Alerts", padx=24, pady=(28, 10), color=DANGER)
+        self._alerts_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._alerts_frame.pack(fill="x", padx=24, pady=(0, 28))
+
+    def _section_header(self, text: str, padx=24, pady=(24, 8), color=TEXT_PRIMARY):
         ctk.CTkLabel(
             self,
-            text="Overdue Alerts",
+            text=text,
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
-            text_color=DANGER,
-        ).pack(anchor="w", pady=(0, 8))
+            text_color=color,
+            fg_color="transparent",
+        ).pack(anchor="w", padx=padx, pady=pady)
 
-        self._alerts_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self._alerts_frame.pack(fill="x", pady=(0, 24))
+    # ------------------------------------------------------------------ data
 
     def refresh(self):
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _load(self):
+        summary = logs = overdue = None
         try:
             summary = self.api.get_dashboard_summary()
-            self._card_total.update_value(str(summary["total_equipment"]))
-            self._card_operational.update_value(str(summary["operational_count"]))
-            self._card_overdue.update_value(str(summary["overdue_count"]))
-            self._card_logs.update_value(str(summary["logs_this_month"]))
         except Exception:
             pass
-
         try:
             logs = self.api.get_maintenance_logs()[:5]
-            self._recent_table.clear_rows()
-            for i, log in enumerate(logs):
-                date_str = log["performed_at"][:10] if log.get("performed_at") else "—"
-                self._recent_table.add_row(
-                    [
-                        log.get("equipment_name") or "—",
-                        log.get("maintenance_type", "—").title(),
-                        log.get("performed_by", "—"),
-                        date_str,
-                        log.get("next_due_date", "—"),
-                    ],
-                    even=(i % 2 == 1),
-                )
         except Exception:
-            pass
-
+            logs = []
         try:
             overdue = self.api.get_overdue()[:3]
-            for w in self._alerts_frame.winfo_children():
-                w.destroy()
+        except Exception:
+            overdue = []
+        self.after(0, lambda: self._render(summary, logs, overdue))
+
+    def _render(self, summary, logs, overdue):
+        if summary:
+            self._card_total.update_value(str(summary["total_equipment"]))
+            self._card_op.update_value(str(summary["operational_count"]))
+            self._card_overdue.update_value(str(summary["overdue_count"]))
+            self._card_logs.update_value(str(summary["logs_this_month"]))
+
+        self._recent_table.clear_rows()
+        for i, log in enumerate(logs or []):
+            date_str = (log.get("performed_at") or "")[:10] or "—"
+            self._recent_table.add_row([
+                log.get("equipment_name") or "—",
+                log.get("maintenance_type", "—").title(),
+                log.get("performed_by", "—"),
+                date_str,
+                log.get("next_due_date", "—"),
+            ], even=(i % 2 == 1))
+
+        for w in self._alerts_frame.winfo_children():
+            w.destroy()
+        if overdue:
             for item in overdue:
                 self._add_alert_card(item)
-            if not overdue:
-                ctk.CTkLabel(
-                    self._alerts_frame,
-                    text="No overdue items",
-                    text_color=TEXT_SECONDARY,
-                    font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                ).pack(anchor="w")
-        except Exception:
-            pass
+        else:
+            ctk.CTkLabel(
+                self._alerts_frame,
+                text="No overdue items — everything is on schedule.",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+                text_color=TEXT_SECONDARY,
+                fg_color="transparent",
+            ).pack(anchor="w", pady=4)
 
     def _add_alert_card(self, item: dict):
         card = ctk.CTkFrame(
@@ -124,26 +164,47 @@ class DashboardScreen(ctk.CTkScrollableFrame):
             fg_color=DANGER_LIGHT,
             corner_radius=8,
             border_width=1,
-            border_color=DANGER,
+            border_color="#FECACA",
         )
-        card.pack(fill="x", pady=4)
+        card.pack(fill="x", pady=(0, 8))
 
-        # Left rule
+        # Signature 3px left rule
         rule = ctk.CTkFrame(card, width=3, fg_color=DANGER, corner_radius=0)
         rule.pack(side="left", fill="y")
+        rule.pack_propagate(False)
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(side="left", fill="both", expand=True, padx=12, pady=10)
+        inner.pack(side="left", fill="both", expand=True, padx=14, pady=12)
 
         ctk.CTkLabel(
             inner,
             text=item.get("name", "—"),
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=TEXT_PRIMARY,
+            fg_color="transparent",
         ).pack(anchor="w")
         ctk.CTkLabel(
             inner,
             text=f"{item.get('location', '—')}  ·  {item.get('days_overdue', 0)} days overdue",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=DANGER,
-        ).pack(anchor="w")
+            fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Right: days counter
+        badge = ctk.CTkFrame(card, fg_color="transparent")
+        badge.pack(side="right", padx=16)
+        ctk.CTkLabel(
+            badge,
+            text=str(item.get("days_overdue", 0)),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=22, weight="bold"),
+            text_color=DANGER,
+            fg_color="transparent",
+        ).pack()
+        ctk.CTkLabel(
+            badge,
+            text="days",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=10),
+            text_color=DANGER,
+            fg_color="transparent",
+        ).pack()

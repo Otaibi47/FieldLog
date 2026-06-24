@@ -1,5 +1,8 @@
 import customtkinter as ctk
-from config import SURFACE, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT, ACCENT_LIGHT, BORDER, DANGER, FONT_FAMILY
+from config import (
+    SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT, ACCENT_LIGHT, DANGER, FONT_FAMILY,
+)
 
 
 class Sidebar(ctk.CTkFrame):
@@ -7,62 +10,74 @@ class Sidebar(ctk.CTkFrame):
         super().__init__(master, width=200, fg_color=SURFACE, corner_radius=0, **kwargs)
         self.on_navigate = on_navigate
         self._active = "dashboard"
-        self._alert_count = 0
-        self._buttons = {}
-        self.grid_propagate(False)
+        self._items: dict[str, dict] = {}   # key → {outer, rule, btn}
+        self.pack_propagate(False)
         self._build()
 
     def _build(self):
-        # Logo / app title
-        title = ctk.CTkLabel(
-            self,
-            text="FieldLog",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=18, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        )
-        title.pack(pady=(24, 4), padx=16, anchor="w")
+        # App identity
+        brand = ctk.CTkFrame(self, fg_color="transparent")
+        brand.pack(fill="x", padx=16, pady=(28, 20))
 
-        sub = ctk.CTkLabel(
-            self,
+        ctk.CTkLabel(
+            brand,
+            text="FieldLog",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=17, weight="bold"),
+            text_color=TEXT_PRIMARY,
+            fg_color="transparent",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            brand,
             text="Maintenance Tracker",
             font=ctk.CTkFont(family=FONT_FAMILY, size=11),
             text_color=TEXT_SECONDARY,
-        )
-        sub.pack(padx=16, anchor="w")
+            fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
 
         # Divider
-        ctk.CTkFrame(self, height=1, fg_color=BORDER).pack(fill="x", pady=16, padx=0)
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(fill="x")
 
-        nav_items = [
-            ("dashboard", "Dashboard"),
-            ("equipment", "Equipment"),
+        ctk.CTkLabel(
+            self,
+            text="NAVIGATION",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=10, weight="bold"),
+            text_color=TEXT_SECONDARY,
+            fg_color="transparent",
+        ).pack(anchor="w", padx=16, pady=(16, 6))
+
+        for key, label in [
+            ("dashboard",   "Dashboard"),
+            ("equipment",   "Equipment"),
             ("maintenance", "Maintenance"),
-            ("alerts", "Alerts"),
-        ]
-        for key, label in nav_items:
-            self._make_nav_button(key, label)
+            ("alerts",      "Alerts"),
+        ]:
+            self._make_item(key, label)
 
-        # Right-edge border
-        ctk.CTkFrame(self, width=1, fg_color=BORDER).place(relx=1.0, rely=0, relheight=1.0, anchor="ne")
+    def _make_item(self, key: str, label: str):
+        # Container — drives the background highlight
+        outer = ctk.CTkFrame(self, fg_color="transparent", corner_radius=6)
+        outer.pack(fill="x", padx=8, pady=2)
 
-    def _make_nav_button(self, key: str, label: str):
-        frame = ctk.CTkFrame(self, fg_color="transparent", cursor="hand2")
-        frame.pack(fill="x", padx=8, pady=2)
+        # 3px left rule (invisible when inactive, ACCENT when active)
+        rule = ctk.CTkFrame(outer, width=3, fg_color="transparent", corner_radius=0)
+        rule.pack(side="left", fill="y")
+        rule.pack_propagate(False)
 
         btn = ctk.CTkButton(
-            frame,
+            outer,
             text=label,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             fg_color="transparent",
             text_color=TEXT_SECONDARY,
             hover_color=ACCENT_LIGHT,
             anchor="w",
+            corner_radius=4,
+            height=38,
             command=lambda k=key: self._navigate(k),
-            corner_radius=6,
-            height=36,
         )
-        btn.pack(fill="x")
-        self._buttons[key] = btn
+        btn.pack(fill="both", expand=True, padx=(4, 0))
+
+        self._items[key] = {"outer": outer, "rule": rule, "btn": btn}
 
     def _navigate(self, key: str):
         self._active = key
@@ -70,18 +85,34 @@ class Sidebar(ctk.CTkFrame):
         self.on_navigate(key)
 
     def _refresh_styles(self):
-        for key, btn in self._buttons.items():
+        for key, item in self._items.items():
             if key == self._active:
-                btn.configure(fg_color=ACCENT_LIGHT, text_color=ACCENT)
+                item["outer"].configure(fg_color=ACCENT_LIGHT)
+                item["rule"].configure(fg_color=ACCENT)
+                item["btn"].configure(
+                    fg_color=ACCENT_LIGHT,
+                    hover_color=ACCENT_LIGHT,
+                    text_color=ACCENT,
+                )
             else:
-                btn.configure(fg_color="transparent", text_color=TEXT_SECONDARY)
+                item["outer"].configure(fg_color="transparent")
+                item["rule"].configure(fg_color="transparent")
+                item["btn"].configure(
+                    fg_color="transparent",
+                    hover_color=ACCENT_LIGHT,
+                    text_color=TEXT_SECONDARY,
+                )
 
     def set_alert_count(self, count: int):
-        self._alert_count = count
-        label = f"Alerts  ({count})" if count > 0 else "Alerts"
-        btn = self._buttons.get("alerts")
-        if btn:
-            btn.configure(text=label, text_color=DANGER if count > 0 else TEXT_SECONDARY)
+        item = self._items.get("alerts")
+        if not item:
+            return
+        label = f"Alerts  •  {count}" if count > 0 else "Alerts"
+        item["btn"].configure(text=label)
+        if count > 0 and self._active != "alerts":
+            item["btn"].configure(text_color=DANGER)
+        elif self._active != "alerts":
+            item["btn"].configure(text_color=TEXT_SECONDARY)
 
     def set_active(self, key: str):
         self._active = key

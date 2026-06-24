@@ -1,6 +1,6 @@
 import os
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://fieldlog-production-8300.up.railway.app")
 
 # Colors
 BG = "#F8F9FA"

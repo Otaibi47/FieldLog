@@ -1,3 +1,4 @@
+import threading
 import customtkinter as ctk
 from datetime import datetime, date, timedelta
 from components.data_table import DataTable
@@ -5,182 +6,225 @@ from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
     ACCENT, DANGER, FONT_FAMILY,
 )
+from screens.equipment import _field, _dropdown
 
+
+# ─────────────────────────── screen ──────────────────────────────────────────
 
 class MaintenanceScreen(ctk.CTkFrame):
     def __init__(self, master, api_client, **kwargs):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
-        self._equipment_list = []
+        self._equipment_list: list[dict] = []
         self._build()
-        self.refresh()
 
     def _build(self):
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(24, 8))
+        # Page header
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.pack(fill="x", padx=24, pady=(28, 0))
 
+        left = ctk.CTkFrame(hdr, fg_color="transparent")
+        left.pack(side="left", fill="y")
         ctk.CTkLabel(
-            header,
-            text="Maintenance Log",
+            left, text="Maintenance Log",
             font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        ).pack(side="left")
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            left, text="Track all maintenance activity across your equipment",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
+
+        right = ctk.CTkFrame(hdr, fg_color="transparent")
+        right.pack(side="right", fill="y", anchor="center")
 
         self._filter_var = ctk.StringVar(value="All Equipment")
         self._filter_menu = ctk.CTkOptionMenu(
-            header,
-            values=["All Equipment"],
-            variable=self._filter_var,
+            right, values=["All Equipment"], variable=self._filter_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            corner_radius=6,
             fg_color=SURFACE,
-            button_color=ACCENT,
-            command=lambda _: self.refresh(),
+            button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            text_color=TEXT_PRIMARY,
+            corner_radius=6, height=36, width=160,
+            command=lambda _: self._load_logs(),
         )
         self._filter_menu.pack(side="right", padx=(8, 0))
 
         ctk.CTkButton(
-            header,
-            text="+ Log Maintenance",
+            right, text="+ Log Maintenance",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=ACCENT,
-            hover_color="#1E40AF",
-            corner_radius=6,
+            fg_color=ACCENT, hover_color="#1E40AF",
+            corner_radius=6, height=36,
             command=self._open_log_form,
         ).pack(side="right")
 
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(16, 0)
+        )
+
+        # Table
         self._table = DataTable(
             self,
             columns=[
-                ("Equipment", 3),
-                ("Type", 2),
-                ("Performed By", 2),
-                ("Date", 2),
-                ("Next Due", 2),
+                ("Equipment",    190),
+                ("Type",         100),
+                ("Performed By", 150),
+                ("Date",         110),
+                ("Next Due",     110),
             ],
-            height=500,
+            height=520,
         )
-        self._table.pack(fill="both", expand=True, padx=24, pady=(0, 24))
+        self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+
+    # ------------------------------------------------------------------ data
 
     def refresh(self):
+        threading.Thread(target=self._load_all, daemon=True).start()
+
+    def _load_all(self):
         try:
-            self._equipment_list = self.api.get_equipment()
-            names = ["All Equipment"] + [e["name"] for e in self._equipment_list]
-            self._filter_menu.configure(values=names)
+            eq = self.api.get_equipment()
         except Exception:
-            self._equipment_list = []
+            eq = []
+        self.after(0, lambda d=eq: self._update_filter(d))
+        self._load_logs_data(None)
 
-        selected_name = self._filter_var.get()
-        eq_id = None
-        if selected_name != "All Equipment":
-            for e in self._equipment_list:
-                if e["name"] == selected_name:
-                    eq_id = e["id"]
-                    break
+    def _update_filter(self, equipment_list):
+        self._equipment_list = equipment_list
+        names = ["All Equipment"] + [e["name"] for e in equipment_list]
+        self._filter_menu.configure(values=names)
 
+    def _load_logs(self):
+        threading.Thread(target=self._load_logs_data, args=(None,), daemon=True).start()
+
+    def _load_logs_data(self, _):
+        selected = self._filter_var.get()
+        eq_id = next(
+            (e["id"] for e in self._equipment_list if e["name"] == selected), None
+        )
         try:
             logs = self.api.get_maintenance_logs(equipment_id=eq_id)
         except Exception:
             logs = []
+        self.after(0, lambda d=logs: self._render(d))
 
+    def _render(self, logs):
         self._table.clear_rows()
         for i, log in enumerate(logs):
-            date_str = log.get("performed_at", "")[:10] if log.get("performed_at") else "—"
-            self._table.add_row(
-                [
-                    log.get("equipment_name") or "—",
-                    log.get("maintenance_type", "—").title(),
-                    log.get("performed_by", "—"),
-                    date_str,
-                    log.get("next_due_date", "—"),
-                ],
-                even=(i % 2 == 1),
-            )
+            date_str = (log.get("performed_at") or "")[:10] or "—"
+            self._table.add_row([
+                log.get("equipment_name") or "—",
+                log.get("maintenance_type", "—").title(),
+                log.get("performed_by", "—"),
+                date_str,
+                log.get("next_due_date", "—"),
+            ], even=(i % 2 == 1))
 
     def _open_log_form(self):
         MaintenanceFormModal(self, self.api, self._equipment_list, on_save=self.refresh)
 
 
+# ─────────────────────────── modal ───────────────────────────────────────────
+
 class MaintenanceFormModal(ctk.CTkToplevel):
-    def __init__(self, master, api_client, equipment_list: list, on_save):
+    def __init__(self, master, api_client, equipment_list, on_save):
         super().__init__(master)
-        self.api = api_client
+        self.api            = api_client
         self.equipment_list = equipment_list
-        self.on_save = on_save
+        self.on_save        = on_save
+        self.configure(fg_color=SURFACE)
         self.title("Log Maintenance")
-        self.geometry("480x560")
+        self.geometry("500x640")
         self.resizable(False, False)
         self.grab_set()
         self._build()
 
     def _build(self):
-        form = ctk.CTkScrollableFrame(self, fg_color="white")
-        form.pack(fill="both", expand=True, padx=24, pady=24)
+        # Accent top bar
+        ctk.CTkFrame(self, height=4, fg_color=ACCENT, corner_radius=0).pack(fill="x")
 
-        def field(label, placeholder="", default=""):
-            ctk.CTkLabel(form, text=label, font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                         text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-            entry = ctk.CTkEntry(form, placeholder_text=placeholder,
-                                 font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                                 corner_radius=6, border_color=BORDER, height=36)
-            if default:
-                entry.insert(0, default)
-            entry.pack(fill="x")
-            return entry
+        title_bar = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
+        title_bar.pack(fill="x", padx=24, pady=(16, 0))
+        ctk.CTkLabel(
+            title_bar, text="Log Maintenance",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            title_bar, text="Record a completed maintenance event",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 0))
 
-        # Equipment picker
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(14, 0)
+        )
+
+        body = ctk.CTkScrollableFrame(self, fg_color=SURFACE, corner_radius=0)
+        body.pack(fill="both", expand=True)
+
         eq_names = [e["name"] for e in self.equipment_list]
-        self._eq_var = ctk.StringVar(value=eq_names[0] if eq_names else "")
-        ctk.CTkLabel(form, text="Equipment", font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                     text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-        ctk.CTkOptionMenu(form, values=eq_names or ["—"], variable=self._eq_var,
-                          font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                          corner_radius=6, fg_color=SURFACE, button_color=ACCENT).pack(fill="x")
+        self._eq_var   = _dropdown(body, "Equipment",        eq_names or ["No equipment yet"], eq_names[0] if eq_names else "")
+        self._type_var = _dropdown(body, "Maintenance Type", ["routine","corrective","emergency"], "routine")
+        self._performed_by = _field(body, "Performed By",    "Technician name")
+        self._description  = _field(body, "Description",     "What was done?")
+        self._parts        = _field(body, "Parts Replaced (optional)", "")
+        self._performed_at = _field(
+            body, "Performed At (ISO datetime)", "2024-06-15T09:00:00",
+            datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        )
+        self._next_due = _field(
+            body, "Next Due Date (YYYY-MM-DD)", "2024-09-15",
+            str(date.today() + timedelta(days=90)),
+        )
 
-        self._type_var = ctk.StringVar(value="routine")
-        ctk.CTkLabel(form, text="Maintenance Type", font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                     text_color=TEXT_SECONDARY, anchor="w").pack(fill="x", pady=(8, 2))
-        ctk.CTkOptionMenu(form, values=["routine", "corrective", "emergency"],
-                          variable=self._type_var, font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-                          corner_radius=6, fg_color=SURFACE, button_color=ACCENT).pack(fill="x")
+        self._error = ctk.CTkLabel(
+            body, text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=DANGER, fg_color="transparent",
+        )
+        self._error.pack(anchor="w", padx=24, pady=(4, 0))
 
-        self._performed_by = field("Performed By", "Technician name")
-        self._description = field("Description", "What was done?")
-        self._parts = field("Parts Replaced (optional)", "")
-        default_date = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        self._performed_at = field("Performed At (ISO datetime)", "2024-06-15T09:00:00", default_date)
-        default_next = str(date.today() + timedelta(days=90))
-        self._next_due = field("Next Due Date (YYYY-MM-DD)", "2024-09-15", default_next)
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(fill="x")
+        foot = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
+        foot.pack(fill="x", padx=24, pady=16)
 
-        btn_row = ctk.CTkFrame(self, fg_color="transparent")
-        btn_row.pack(pady=16)
-        ctk.CTkButton(btn_row, text="Cancel", fg_color="#F3F4F6", text_color=TEXT_PRIMARY,
-                      hover_color=BORDER, corner_radius=6, command=self.destroy).pack(side="left", padx=8)
-        ctk.CTkButton(btn_row, text="Save Log", fg_color=ACCENT, hover_color="#1E40AF",
-                      corner_radius=6, command=self._save).pack(side="left")
-
-        self._error_label = ctk.CTkLabel(self, text="", text_color=DANGER,
-                                          font=ctk.CTkFont(family=FONT_FAMILY, size=12))
-        self._error_label.pack()
+        ctk.CTkButton(
+            foot, text="Cancel", width=88,
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_width=1, border_color=BORDER,
+            hover_color=BG, corner_radius=6,
+            command=self.destroy,
+        ).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(
+            foot, text="Save Log", width=110,
+            fg_color=ACCENT, hover_color="#1E40AF",
+            corner_radius=6, command=self._save,
+        ).pack(side="right")
 
     def _save(self):
         eq_name = self._eq_var.get()
-        eq_id = next((e["id"] for e in self.equipment_list if e["name"] == eq_name), None)
+        eq_id   = next((e["id"] for e in self.equipment_list if e["name"] == eq_name), None)
         if not eq_id:
-            self._error_label.configure(text="Please select valid equipment")
+            self._error.configure(text="Please select a valid equipment item.")
             return
+
         data = {
-            "equipment_id": eq_id,
-            "performed_by": self._performed_by.get().strip(),
+            "equipment_id":    eq_id,
+            "performed_by":    self._performed_by.get().strip(),
             "maintenance_type": self._type_var.get(),
-            "description": self._description.get().strip(),
-            "parts_replaced": self._parts.get().strip() or None,
-            "performed_at": self._performed_at.get().strip(),
-            "next_due_date": self._next_due.get().strip(),
+            "description":     self._description.get().strip(),
+            "parts_replaced":  self._parts.get().strip() or None,
+            "performed_at":    self._performed_at.get().strip(),
+            "next_due_date":   self._next_due.get().strip(),
         }
-        try:
-            self.api.create_maintenance_log(data)
-            self.on_save()
-            self.destroy()
-        except Exception as e:
-            self._error_label.configure(text=f"Error: {e}")
+
+        def _run():
+            try:
+                self.api.create_maintenance_log(data)
+                self.after(0, lambda: (self.on_save(), self.destroy()))
+            except Exception as e:
+                self.after(0, lambda err=str(e): self._error.configure(text=f"Error: {err}"))
+
+        threading.Thread(target=_run, daemon=True).start()
