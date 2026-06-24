@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from config import (
-    FONT_FAMILY, DANGER,
+    FONT_FAMILY,
     SIDEBAR_BG, SIDEBAR_HOVER, SIDEBAR_ACTIVE_BG,
     SIDEBAR_TEXT, SIDEBAR_TEXT_ACTIVE, SIDEBAR_RULE, SIDEBAR_LABEL,
 )
@@ -16,24 +16,22 @@ class Sidebar(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # App brand
-        brand = ctk.CTkFrame(self, fg_color="transparent")
-        brand.pack(fill="x", padx=20, pady=(28, 22))
-
+        # Brand — labels directly in sidebar, no wrapper frame (avoids corner_radius overhead)
         ctk.CTkLabel(
-            brand,
+            self,
             text="FieldLog",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=17, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
             text_color=SIDEBAR_TEXT_ACTIVE,
             fg_color="transparent",
-        ).pack(anchor="w")
+        ).pack(anchor="w", padx=16, pady=(20, 0))
+
         ctk.CTkLabel(
-            brand,
+            self,
             text="Maintenance Tracker",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=10),
             text_color=SIDEBAR_TEXT,
             fg_color="transparent",
-        ).pack(anchor="w", pady=(3, 0))
+        ).pack(anchor="w", padx=16, pady=(2, 14))
 
         ctk.CTkFrame(self, height=1, fg_color="#334155", corner_radius=0).pack(fill="x")
 
@@ -43,7 +41,7 @@ class Sidebar(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=10, weight="bold"),
             text_color=SIDEBAR_LABEL,
             fg_color="transparent",
-        ).pack(anchor="w", padx=20, pady=(18, 6))
+        ).pack(anchor="w", padx=16, pady=(12, 4))
 
         for key, label in [
             ("dashboard",   "Dashboard"),
@@ -54,16 +52,14 @@ class Sidebar(ctk.CTkFrame):
             self._make_item(key, label)
 
     def _make_item(self, key: str, label: str):
-        # Container row
-        outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=6)
-        outer.pack(fill="x", padx=10, pady=2)
+        # corner_radius=0 avoids hidden internal padding that causes overflow on high-DPI screens
+        outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=0)
+        outer.pack(fill="x", padx=8, pady=1)
 
-        # 3px left accent rule
         rule = ctk.CTkFrame(outer, width=3, fg_color=SIDEBAR_BG, corner_radius=0)
         rule.pack(side="left", fill="y")
         rule.pack_propagate(False)
 
-        # CTkLabel — more reliable than CTkButton for nav items on Windows
         lbl = ctk.CTkLabel(
             outer,
             text=label,
@@ -73,9 +69,8 @@ class Sidebar(ctk.CTkFrame):
             anchor="w",
             cursor="hand2",
         )
-        lbl.pack(fill="x", padx=(8, 8), pady=9)
+        lbl.pack(fill="x", padx=(8, 8), pady=7)
 
-        # Click + hover bindings on all three widgets so the whole row is a target
         for widget in (outer, rule, lbl):
             widget.bind("<Button-1>", lambda e, k=key: self._navigate(k))
         for widget in (outer, lbl):
