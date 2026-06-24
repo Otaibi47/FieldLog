@@ -54,15 +54,17 @@ class AlertsScreen(ctk.CTkFrame):
             banner_text_frame, text="",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
             text_color=DANGER, fg_color="transparent",
+            anchor="center",
         )
-        self._banner_title.pack(anchor="w")
+        self._banner_title.pack(fill="x")
         self._banner_sub = ctk.CTkLabel(
             banner_text_frame,
             text="Address these items immediately to avoid equipment failure.",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             text_color=DANGER, fg_color="transparent",
+            anchor="center",
         )
-        self._banner_sub.pack(anchor="w", pady=(1, 0))
+        self._banner_sub.pack(fill="x", pady=(1, 0))
 
         # Table
         self._table = DataTable(
@@ -111,7 +113,8 @@ class AlertsScreen(ctk.CTkFrame):
                         f, text=d,
                         font=ctk.CTkFont(family=FONT_MONO, size=14, weight="bold"),
                         text_color=DANGER, fg_color="transparent",
-                    ).pack(anchor="w", padx=4, pady=6)
+                        anchor="center",
+                    ).pack(fill="both", expand=True, pady=6)
                 return _b
 
             self._table.add_row([
