@@ -5,6 +5,13 @@ from config import (
     SIDEBAR_TEXT, SIDEBAR_TEXT_ACTIVE, SIDEBAR_RULE, SIDEBAR_LABEL,
 )
 
+_NAV = [
+    ("dashboard",   "Dashboard"),
+    ("equipment",   "Equipment"),
+    ("maintenance", "Maintenance"),
+    ("alerts",      "Alerts"),
+]
+
 
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, on_navigate, **kwargs):
@@ -12,49 +19,54 @@ class Sidebar(ctk.CTkFrame):
         self.on_navigate = on_navigate
         self._active = "dashboard"
         self._items: dict[str, dict] = {}
-        self.pack_propagate(False)
+        # grid_propagate(False) keeps the sidebar's own size set by the
+        # parent grid (sticky="nsew") rather than by its children
+        self.grid_propagate(False)
         self._build()
 
     def _build(self):
-        # Brand — labels directly in sidebar, no wrapper frame (avoids corner_radius overhead)
+        self.grid_columnconfigure(0, weight=1)
+
+        # ── brand ──────────────────────────────────────────────────────────
+        self.grid_rowconfigure(0, minsize=52)
         ctk.CTkLabel(
             self,
             text="FieldLog",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=SIDEBAR_TEXT_ACTIVE,
             fg_color="transparent",
-        ).pack(anchor="w", padx=16, pady=(20, 0))
+        ).grid(row=0, column=0, sticky="w", padx=16)
 
-        ctk.CTkLabel(
-            self,
-            text="Maintenance Tracker",
-            font=ctk.CTkFont(family=FONT_FAMILY, size=10),
-            text_color=SIDEBAR_TEXT,
-            fg_color="transparent",
-        ).pack(anchor="w", padx=16, pady=(2, 14))
+        # ── divider ────────────────────────────────────────────────────────
+        self.grid_rowconfigure(1, minsize=1)
+        ctk.CTkFrame(self, height=1, fg_color="#334155", corner_radius=0).grid(
+            row=1, column=0, sticky="ew",
+        )
 
-        ctk.CTkFrame(self, height=1, fg_color="#334155", corner_radius=0).pack(fill="x")
-
+        # ── nav label ──────────────────────────────────────────────────────
+        self.grid_rowconfigure(2, minsize=32)
         ctk.CTkLabel(
             self,
             text="NAVIGATION",
             font=ctk.CTkFont(family=FONT_FAMILY, size=10, weight="bold"),
             text_color=SIDEBAR_LABEL,
             fg_color="transparent",
-        ).pack(anchor="w", padx=16, pady=(12, 4))
+        ).grid(row=2, column=0, sticky="sw", padx=16, pady=(0, 4))
 
-        for key, label in [
-            ("dashboard",   "Dashboard"),
-            ("equipment",   "Equipment"),
-            ("maintenance", "Maintenance"),
-            ("alerts",      "Alerts"),
-        ]:
-            self._make_item(key, label)
+        # ── nav items (rows 3-6) ────────────────────────────────────────────
+        for i, (key, label) in enumerate(_NAV):
+            self.grid_rowconfigure(i + 3, minsize=40)
+            self._make_item(key, label, row=i + 3)
 
-    def _make_item(self, key: str, label: str):
-        # corner_radius=0 avoids hidden internal padding that causes overflow on high-DPI screens
+        # ── spacer swallows all remaining height ───────────────────────────
+        self.grid_rowconfigure(7, weight=1)
+        ctk.CTkFrame(self, fg_color="transparent", corner_radius=0).grid(
+            row=7, column=0, sticky="nsew",
+        )
+
+    def _make_item(self, key: str, label: str, row: int):
         outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=0)
-        outer.pack(fill="x", padx=8, pady=1)
+        outer.grid(row=row, column=0, sticky="nsew", padx=8, pady=1)
 
         rule = ctk.CTkFrame(outer, width=3, fg_color=SIDEBAR_BG, corner_radius=0)
         rule.pack(side="left", fill="y")
@@ -69,7 +81,7 @@ class Sidebar(ctk.CTkFrame):
             anchor="w",
             cursor="hand2",
         )
-        lbl.pack(fill="x", padx=(8, 8), pady=7)
+        lbl.pack(side="left", fill="x", expand=True, padx=(8, 8))
 
         for widget in (outer, rule, lbl):
             widget.bind("<Button-1>", lambda e, k=key: self._navigate(k))
@@ -78,6 +90,8 @@ class Sidebar(ctk.CTkFrame):
             widget.bind("<Leave>", lambda e, o=outer, k=key: self._on_hover(o, k, False))
 
         self._items[key] = {"outer": outer, "rule": rule, "lbl": lbl}
+
+    # ── interaction ────────────────────────────────────────────────────────
 
     def _on_hover(self, outer, key: str, entering: bool):
         if key == self._active:
