@@ -65,8 +65,11 @@ class Sidebar(ctk.CTkFrame):
         )
 
     def _make_item(self, key: str, label: str, row: int):
-        outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=0)
-        outer.grid(row=row, column=0, sticky="nsew", padx=8, pady=1)
+        # height=40 + pack_propagate(False) overrides CTkFrame's default height=200
+        # which would otherwise make each row request 200px from the grid
+        outer = ctk.CTkFrame(self, fg_color=SIDEBAR_BG, corner_radius=0, height=40)
+        outer.grid(row=row, column=0, sticky="ew", padx=8, pady=1)
+        outer.pack_propagate(False)
 
         rule = ctk.CTkFrame(outer, width=3, fg_color=SIDEBAR_BG, corner_radius=0)
         rule.pack(side="left", fill="y")
