@@ -4,7 +4,7 @@ from components.data_table import DataTable
 from components.status_badge import StatusBadge
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    ACCENT, DANGER, FONT_FAMILY,
+    ACCENT, ACCENT_LIGHT, DANGER, FONT_FAMILY,
 )
 
 
@@ -17,7 +17,6 @@ class EquipmentScreen(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # Page header
         hdr = ctk.CTkFrame(self, fg_color="transparent")
         hdr.pack(fill="x", padx=24, pady=(28, 0))
 
@@ -38,7 +37,9 @@ class EquipmentScreen(ctk.CTkFrame):
             hdr, text="+ Add Equipment",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             fg_color=ACCENT, hover_color="#1E40AF",
-            corner_radius=6, height=36,
+            text_color="#FFFFFF",
+            corner_radius=8, height=36,
+            width=140,
             command=self._open_add_form,
         ).pack(side="right", anchor="center")
 
@@ -46,7 +47,6 @@ class EquipmentScreen(ctk.CTkFrame):
             fill="x", pady=(16, 0)
         )
 
-        # Table
         self._table = DataTable(
             self,
             columns=[
@@ -61,7 +61,7 @@ class EquipmentScreen(ctk.CTkFrame):
         )
         self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
 
-    # ------------------------------------------------------------------ data
+    # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
         threading.Thread(target=self._load, daemon=True).start()
@@ -75,9 +75,7 @@ class EquipmentScreen(ctk.CTkFrame):
 
     def _render(self, items):
         self._table.clear_rows()
-
         if not items:
-            # empty state handled naturally — table shows only header
             return
 
         for i, item in enumerate(items):
@@ -89,21 +87,28 @@ class EquipmentScreen(ctk.CTkFrame):
 
             def make_actions(it):
                 def _b(f):
-                    ctk.CTkButton(
-                        f, text="Edit", width=46, height=28,
+                    # Text-link style: CTkLabel + bindings (avoids CTkButton transparency bug)
+                    edit_lbl = ctk.CTkLabel(
+                        f, text="Edit",
                         font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                        fg_color=SURFACE, text_color=ACCENT,
-                        border_width=1, border_color=BORDER,
-                        hover_color="#EFF6FF", corner_radius=4,
-                        command=lambda: self._open_edit_form(it),
-                    ).pack(side="left", padx=(0, 6))
-                    ctk.CTkButton(
-                        f, text="Delete", width=54, height=28,
+                        text_color=ACCENT, fg_color="transparent",
+                        cursor="hand2",
+                    )
+                    edit_lbl.pack(side="left", padx=(0, 10))
+                    edit_lbl.bind("<Button-1>", lambda e, x=it: self._open_edit_form(x))
+                    edit_lbl.bind("<Enter>", lambda e, l=edit_lbl: l.configure(text_color="#1E40AF"))
+                    edit_lbl.bind("<Leave>", lambda e, l=edit_lbl: l.configure(text_color=ACCENT))
+
+                    del_lbl = ctk.CTkLabel(
+                        f, text="Delete",
                         font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                        fg_color="transparent", text_color=DANGER,
-                        hover_color="#FEF2F2", corner_radius=4,
-                        command=lambda: self._confirm_delete(it),
-                    ).pack(side="left")
+                        text_color=DANGER, fg_color="transparent",
+                        cursor="hand2",
+                    )
+                    del_lbl.pack(side="left")
+                    del_lbl.bind("<Button-1>", lambda e, x=it: self._confirm_delete(x))
+                    del_lbl.bind("<Enter>", lambda e, l=del_lbl: l.configure(text_color="#B91C1C"))
+                    del_lbl.bind("<Leave>", lambda e, l=del_lbl: l.configure(text_color=DANGER))
                 return _b
 
             self._table.add_row([
@@ -115,7 +120,7 @@ class EquipmentScreen(ctk.CTkFrame):
                 make_actions(item),
             ], even=(i % 2 == 1))
 
-    # ------------------------------------------------------------------ actions
+    # ── actions ───────────────────────────────────────────────────────────────
 
     def _open_add_form(self):
         EquipmentFormModal(self, self.api, on_save=self.refresh)
@@ -126,7 +131,7 @@ class EquipmentScreen(ctk.CTkFrame):
     def _confirm_delete(self, item):
         dlg = ctk.CTkToplevel(self)
         dlg.title("Confirm Delete")
-        dlg.geometry("400x160")
+        dlg.geometry("420x170")
         dlg.resizable(False, False)
         dlg.configure(fg_color=SURFACE)
         dlg.grab_set()
@@ -147,17 +152,18 @@ class EquipmentScreen(ctk.CTkFrame):
         ).pack(anchor="w", padx=24)
 
         foot = ctk.CTkFrame(dlg, fg_color="transparent")
-        foot.pack(anchor="e", padx=24, pady=16)
+        foot.pack(anchor="e", padx=24, pady=18)
         ctk.CTkButton(
-            foot, text="Cancel", width=80,
+            foot, text="Cancel", width=88,
             fg_color=SURFACE, text_color=TEXT_PRIMARY,
             border_width=1, border_color=BORDER,
             hover_color=BG, corner_radius=6,
             command=dlg.destroy,
         ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
-            foot, text="Delete", width=80,
+            foot, text="Delete", width=88,
             fg_color=DANGER, hover_color="#B91C1C",
+            text_color="#FFFFFF",
             corner_radius=6,
             command=lambda: self._do_delete(item["id"], dlg),
         ).pack(side="left")
@@ -178,9 +184,9 @@ class EquipmentScreen(ctk.CTkFrame):
 class EquipmentFormModal(ctk.CTkToplevel):
     def __init__(self, master, api_client, on_save, item: dict = None):
         super().__init__(master)
-        self.api      = api_client
-        self.on_save  = on_save
-        self.item     = item
+        self.api     = api_client
+        self.on_save = on_save
+        self.item    = item
         self.configure(fg_color=SURFACE)
         self.title("Edit Equipment" if item else "Add Equipment")
         self.geometry("500x620")
@@ -189,7 +195,6 @@ class EquipmentFormModal(ctk.CTkToplevel):
         self._build()
 
     def _build(self):
-        # Modal header
         ctk.CTkFrame(self, height=4, fg_color=ACCENT, corner_radius=0).pack(fill="x")
 
         title_bar = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
@@ -211,19 +216,17 @@ class EquipmentFormModal(ctk.CTkToplevel):
             fill="x", pady=(14, 0)
         )
 
-        # Scrollable form body
         body = ctk.CTkScrollableFrame(self, fg_color=SURFACE, corner_radius=0)
         body.pack(fill="both", expand=True)
 
         v = self.item or {}
-
-        self._name     = _field(body, "Equipment Name",                   "e.g. Compressor Unit C-04",  v.get("name", ""))
-        self._type_var = _dropdown(body, "Type",                          ["compressor","pipeline","rig","pump","valve","other"], v.get("type","compressor"))
-        self._location = _field(body, "Location",                         "e.g. Block 7 - North Field",  v.get("location",""))
-        self._status_var = _dropdown(body, "Status",                      ["operational","degraded","offline"],                   v.get("status","operational"))
-        self._last_maint = _field(body, "Last Maintenance (YYYY-MM-DD)",   "2024-01-15",                  v.get("last_maintenance_date","") or "")
-        self._next_due   = _field(body, "Next Due Date (YYYY-MM-DD)",       "2024-07-15",                  v.get("next_maintenance_due","") or "")
-        self._notes      = _field(body, "Notes (optional)",                 "",                            v.get("notes","") or "")
+        self._name       = _field(body, "Equipment Name",              "e.g. Compressor Unit C-04",  v.get("name", ""))
+        self._type_var   = _dropdown(body, "Type",                     ["compressor","pipeline","rig","pump","valve","other"], v.get("type","compressor"))
+        self._location   = _field(body, "Location",                    "e.g. Block 7 - North Field",  v.get("location",""))
+        self._status_var = _dropdown(body, "Status",                   ["operational","degraded","offline"], v.get("status","operational"))
+        self._last_maint = _field(body, "Last Maintenance (YYYY-MM-DD)", "2024-01-15",                v.get("last_maintenance_date","") or "")
+        self._next_due   = _field(body, "Next Due Date (YYYY-MM-DD)",  "2024-07-15",                  v.get("next_maintenance_due","") or "")
+        self._notes      = _field(body, "Notes (optional)",            "",                            v.get("notes","") or "")
 
         self._error = ctk.CTkLabel(
             body, text="",
@@ -232,7 +235,6 @@ class EquipmentFormModal(ctk.CTkToplevel):
         )
         self._error.pack(anchor="w", padx=24, pady=(4, 0))
 
-        # Modal footer
         ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(fill="x")
         foot = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
         foot.pack(fill="x", padx=24, pady=16)
@@ -247,6 +249,7 @@ class EquipmentFormModal(ctk.CTkToplevel):
         ctk.CTkButton(
             foot, text="Save Equipment", width=130,
             fg_color=ACCENT, hover_color="#1E40AF",
+            text_color="#FFFFFF",
             corner_radius=6,
             command=self._save,
         ).pack(side="right")
@@ -282,15 +285,15 @@ class EquipmentFormModal(ctk.CTkToplevel):
 def _field(parent, label: str, placeholder: str = "", default: str = "") -> ctk.CTkEntry:
     ctk.CTkLabel(
         parent, text=label,
-        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-        text_color=TEXT_SECONDARY, fg_color="transparent", anchor="w",
+        font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+        text_color="#374151", fg_color="transparent", anchor="w",
     ).pack(fill="x", padx=24, pady=(12, 2))
     e = ctk.CTkEntry(
         parent,
         placeholder_text=placeholder,
         font=ctk.CTkFont(family=FONT_FAMILY, size=13),
         fg_color=SURFACE,
-        border_color=BORDER,
+        border_color="#D1D5DB",
         border_width=1,
         corner_radius=6,
         height=38,
@@ -304,8 +307,8 @@ def _field(parent, label: str, placeholder: str = "", default: str = "") -> ctk.
 def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
     ctk.CTkLabel(
         parent, text=label,
-        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-        text_color=TEXT_SECONDARY, fg_color="transparent", anchor="w",
+        font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
+        text_color="#374151", fg_color="transparent", anchor="w",
     ).pack(fill="x", padx=24, pady=(12, 2))
     var = ctk.StringVar(value=current)
     ctk.CTkOptionMenu(
@@ -319,7 +322,7 @@ def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
         text_color=TEXT_PRIMARY,
         dropdown_fg_color=SURFACE,
         dropdown_text_color=TEXT_PRIMARY,
-        dropdown_hover_color="#EFF6FF",
+        dropdown_hover_color=ACCENT_LIGHT,
         corner_radius=6,
         height=38,
     ).pack(fill="x", padx=24)

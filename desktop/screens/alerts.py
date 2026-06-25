@@ -3,7 +3,7 @@ import customtkinter as ctk
 from components.data_table import DataTable
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    DANGER, DANGER_LIGHT, FONT_FAMILY, FONT_MONO,
+    SUCCESS, DANGER, DANGER_LIGHT, FONT_FAMILY, FONT_MONO,
 )
 
 
@@ -33,38 +33,27 @@ class AlertsScreen(ctk.CTkFrame):
             fill="x", pady=(16, 0)
         )
 
-        # Alert banner (shown only when there are overdue items)
-        self._banner = ctk.CTkFrame(
-            self,
-            fg_color=DANGER_LIGHT,
-            corner_radius=0,
-            border_width=0,
-        )
-        # 3px left rule on the banner itself
-        self._banner_rule = ctk.CTkFrame(
-            self._banner, width=4, fg_color=DANGER, corner_radius=0
-        )
+        # Red banner (shown only when items exist)
+        self._banner = ctk.CTkFrame(self, fg_color=DANGER_LIGHT, corner_radius=0, border_width=0)
+        self._banner_rule = ctk.CTkFrame(self._banner, width=4, fg_color=DANGER, corner_radius=0)
         self._banner_rule.pack(side="left", fill="y")
         self._banner_rule.pack_propagate(False)
 
-        banner_text_frame = ctk.CTkFrame(self._banner, fg_color="transparent")
-        banner_text_frame.pack(side="left", fill="both", expand=True, padx=14, pady=12)
+        banner_body = ctk.CTkFrame(self._banner, fg_color="transparent")
+        banner_body.pack(side="left", fill="both", expand=True, padx=14, pady=10)
 
         self._banner_title = ctk.CTkLabel(
-            banner_text_frame, text="",
+            banner_body, text="",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
-            text_color=DANGER, fg_color="transparent",
-            anchor="center",
+            text_color=DANGER, fg_color="transparent", anchor="w",
         )
         self._banner_title.pack(fill="x")
-        self._banner_sub = ctk.CTkLabel(
-            banner_text_frame,
+        ctk.CTkLabel(
+            banner_body,
             text="Address these items immediately to avoid equipment failure.",
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-            text_color=DANGER, fg_color="transparent",
-            anchor="center",
-        )
-        self._banner_sub.pack(fill="x", pady=(1, 0))
+            text_color=DANGER, fg_color="transparent", anchor="w",
+        ).pack(fill="x", pady=(1, 0))
 
         # Table
         self._table = DataTable(
@@ -76,11 +65,29 @@ class AlertsScreen(ctk.CTkFrame):
                 ("Days Overdue",   120),
                 ("Last Maintained",135),
             ],
-            height=480,
+            height=460,
         )
         self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
 
-    # ------------------------------------------------------------------ data
+        # Empty state (initially hidden)
+        self._empty = ctk.CTkFrame(self, fg_color="transparent")
+        ctk.CTkLabel(
+            self._empty, text="✓",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=48),
+            text_color=SUCCESS, fg_color="transparent",
+        ).pack()
+        ctk.CTkLabel(
+            self._empty, text="All equipment is on schedule",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(pady=(8, 2))
+        ctk.CTkLabel(
+            self._empty, text="No overdue maintenance items found",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack()
+
+    # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
         threading.Thread(target=self._load, daemon=True).start()
@@ -93,6 +100,7 @@ class AlertsScreen(ctk.CTkFrame):
         self.after(0, lambda d=items: self._render(d))
 
     def _render(self, items):
+        # Toggle banner
         if items:
             count = len(items)
             noun = "item" if count == 1 else "items"
@@ -102,6 +110,15 @@ class AlertsScreen(ctk.CTkFrame):
             self._banner.pack(fill="x", padx=24, pady=(16, 0), before=self._table)
         else:
             self._banner.pack_forget()
+
+        # Toggle table vs empty state
+        if items:
+            self._empty.pack_forget()
+            self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+        else:
+            self._table.pack_forget()
+            self._empty.pack(expand=True)
+            return
 
         self._table.clear_rows()
         for i, item in enumerate(items):

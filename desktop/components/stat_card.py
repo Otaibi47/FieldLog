@@ -4,8 +4,7 @@ from config import SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT, FONT_F
 
 class StatCard(ctk.CTkFrame):
     """
-    Shadow wrapper → white card → left colour strip → icon / number / label.
-    The shadow is simulated by a 2px darker frame behind the card.
+    White card — icon · large number · label · colored accent underline at bottom.
     """
 
     def __init__(
@@ -18,56 +17,52 @@ class StatCard(ctk.CTkFrame):
         value_color: str = None,
         **kwargs,
     ):
-        # Shadow wrapper (slightly darker, 2px offset → bottom-right shadow illusion)
-        super().__init__(master, fg_color="#D1D5DB", corner_radius=9, **kwargs)
-        value_color = value_color or accent_color
-
-        # Card surface — slightly inset from shadow
-        card = ctk.CTkFrame(
-            self,
+        super().__init__(
+            master,
             fg_color=SURFACE,
             corner_radius=8,
             border_width=1,
             border_color=BORDER,
+            **kwargs,
         )
-        card.pack(fill="both", expand=True, padx=(0, 2), pady=(0, 2))
+        value_color = value_color or accent_color
 
-        # 4px coloured left strip (the signature rule element on cards)
-        strip = ctk.CTkFrame(card, width=4, fg_color=accent_color, corner_radius=0)
-        strip.pack(side="left", fill="y")
-        strip.pack_propagate(False)
-
-        # Content column
-        col = ctk.CTkFrame(card, fg_color="transparent")
-        col.pack(side="left", fill="both", expand=True)
+        # Content (padded inset)
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=(14, 12))
 
         # Icon
         ctk.CTkLabel(
-            col,
+            content,
             text=icon,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=18),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=20),
             text_color=accent_color,
             fg_color="transparent",
-        ).pack(anchor="w", padx=14, pady=(14, 6))
+        ).pack(anchor="w")
 
         # Value
         self._value_label = ctk.CTkLabel(
-            col,
+            content,
             text=value,
             font=ctk.CTkFont(family=FONT_FAMILY, size=28, weight="bold"),
             text_color=value_color,
             fg_color="transparent",
         )
-        self._value_label.pack(anchor="w", padx=14)
+        self._value_label.pack(anchor="w", pady=(8, 0))
 
         # Label
         ctk.CTkLabel(
-            col,
+            content,
             text=label,
             font=ctk.CTkFont(family=FONT_FAMILY, size=11),
             text_color=TEXT_SECONDARY,
             fg_color="transparent",
-        ).pack(anchor="w", padx=14, pady=(4, 14))
+        ).pack(anchor="w", pady=(3, 0))
+
+        # Accent underline at bottom of card
+        underline = ctk.CTkFrame(self, height=3, fg_color=accent_color, corner_radius=0)
+        underline.pack(fill="x", side="bottom")
+        underline.pack_propagate(False)
 
     def update_value(self, value: str, color: str = None):
         self._value_label.configure(text=value)

@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 from components.data_table import DataTable
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    ACCENT, DANGER, FONT_FAMILY,
+    ACCENT, ACCENT_LIGHT, DANGER, FONT_FAMILY,
 )
 from screens.equipment import _field, _dropdown
 
@@ -19,7 +19,6 @@ class MaintenanceScreen(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # Page header
         hdr = ctk.CTkFrame(self, fg_color="transparent")
         hdr.pack(fill="x", padx=24, pady=(28, 0))
 
@@ -41,12 +40,17 @@ class MaintenanceScreen(ctk.CTkFrame):
 
         self._filter_var = ctk.StringVar(value="All Equipment")
         self._filter_menu = ctk.CTkOptionMenu(
-            right, values=["All Equipment"], variable=self._filter_var,
+            right, values=["All Equipment"],
+            variable=self._filter_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             fg_color=SURFACE,
-            button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            button_color="#E5E7EB",
+            button_hover_color="#D1D5DB",
             text_color=TEXT_PRIMARY,
-            corner_radius=6, height=36, width=160,
+            dropdown_fg_color=SURFACE,
+            dropdown_text_color=TEXT_PRIMARY,
+            dropdown_hover_color=ACCENT_LIGHT,
+            corner_radius=6, height=36, width=170,
             command=lambda _: self._load_logs(),
         )
         self._filter_menu.pack(side="right", padx=(8, 0))
@@ -55,7 +59,8 @@ class MaintenanceScreen(ctk.CTkFrame):
             right, text="+ Log Maintenance",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             fg_color=ACCENT, hover_color="#1E40AF",
-            corner_radius=6, height=36,
+            text_color="#FFFFFF",
+            corner_radius=8, height=36,
             command=self._open_log_form,
         ).pack(side="right")
 
@@ -63,7 +68,6 @@ class MaintenanceScreen(ctk.CTkFrame):
             fill="x", pady=(16, 0)
         )
 
-        # Table
         self._table = DataTable(
             self,
             columns=[
@@ -77,7 +81,7 @@ class MaintenanceScreen(ctk.CTkFrame):
         )
         self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
 
-    # ------------------------------------------------------------------ data
+    # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
         threading.Thread(target=self._load_all, daemon=True).start()
@@ -141,7 +145,6 @@ class MaintenanceFormModal(ctk.CTkToplevel):
         self._build()
 
     def _build(self):
-        # Accent top bar
         ctk.CTkFrame(self, height=4, fg_color=ACCENT, corner_radius=0).pack(fill="x")
 
         title_bar = ctk.CTkFrame(self, fg_color=SURFACE, corner_radius=0)
@@ -165,11 +168,11 @@ class MaintenanceFormModal(ctk.CTkToplevel):
         body.pack(fill="both", expand=True)
 
         eq_names = [e["name"] for e in self.equipment_list]
-        self._eq_var   = _dropdown(body, "Equipment",        eq_names or ["No equipment yet"], eq_names[0] if eq_names else "")
-        self._type_var = _dropdown(body, "Maintenance Type", ["routine","corrective","emergency"], "routine")
-        self._performed_by = _field(body, "Performed By",    "Technician name")
-        self._description  = _field(body, "Description",     "What was done?")
-        self._parts        = _field(body, "Parts Replaced (optional)", "")
+        self._eq_var       = _dropdown(body, "Equipment",                    eq_names or ["No equipment yet"], eq_names[0] if eq_names else "")
+        self._type_var     = _dropdown(body, "Maintenance Type",             ["routine","corrective","emergency"], "routine")
+        self._performed_by = _field(body, "Performed By",                   "Technician name")
+        self._description  = _field(body, "Description",                    "What was done?")
+        self._parts        = _field(body, "Parts Replaced (optional)",      "")
         self._performed_at = _field(
             body, "Performed At (ISO datetime)", "2024-06-15T09:00:00",
             datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -200,6 +203,7 @@ class MaintenanceFormModal(ctk.CTkToplevel):
         ctk.CTkButton(
             foot, text="Save Log", width=110,
             fg_color=ACCENT, hover_color="#1E40AF",
+            text_color="#FFFFFF",
             corner_radius=6, command=self._save,
         ).pack(side="right")
 
@@ -211,13 +215,13 @@ class MaintenanceFormModal(ctk.CTkToplevel):
             return
 
         data = {
-            "equipment_id":    eq_id,
-            "performed_by":    self._performed_by.get().strip(),
+            "equipment_id":     eq_id,
+            "performed_by":     self._performed_by.get().strip(),
             "maintenance_type": self._type_var.get(),
-            "description":     self._description.get().strip(),
-            "parts_replaced":  self._parts.get().strip() or None,
-            "performed_at":    self._performed_at.get().strip(),
-            "next_due_date":   self._next_due.get().strip(),
+            "description":      self._description.get().strip(),
+            "parts_replaced":   self._parts.get().strip() or None,
+            "performed_at":     self._performed_at.get().strip(),
+            "next_due_date":    self._next_due.get().strip(),
         }
 
         def _run():

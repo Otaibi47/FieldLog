@@ -10,7 +10,7 @@ from screens.dashboard import DashboardScreen
 from screens.equipment import EquipmentScreen
 from screens.maintenance import MaintenanceScreen
 from screens.alerts import AlertsScreen
-from config import BG
+from config import BG, BORDER
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -20,8 +20,8 @@ class FieldLogApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("FieldLog")
-        self.geometry("1100x700")
-        self.minsize(900, 600)
+        self.geometry("1160x720")
+        self.minsize(960, 620)
         self.configure(fg_color=BG)
 
         self.api = APIClient()
@@ -30,19 +30,24 @@ class FieldLogApp(ctk.CTk):
 
         self._build()
         self._navigate("dashboard")
-
         threading.Thread(target=self._init_backend, daemon=True).start()
 
     def _build(self):
-        self.grid_columnconfigure(0, weight=0)  # sidebar 210px — fixed
-        self.grid_columnconfigure(1, weight=1)  # content  — expands
+        self.grid_columnconfigure(0, weight=0)   # sidebar — 220px fixed
+        self.grid_columnconfigure(1, weight=0)   # 1px border separator
+        self.grid_columnconfigure(2, weight=1)   # content — fills remaining
         self.grid_rowconfigure(0, weight=1)
 
         self.sidebar = Sidebar(self, on_navigate=self._navigate)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
 
+        # 1px right-edge border on the sidebar
+        ctk.CTkFrame(self, width=1, fg_color=BORDER, corner_radius=0).grid(
+            row=0, column=1, sticky="nsew"
+        )
+
         self.content_frame = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
-        self.content_frame.grid(row=0, column=1, sticky="nsew")
+        self.content_frame.grid(row=0, column=2, sticky="nsew")
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
 
