@@ -14,9 +14,13 @@ class AlertsScreen(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # Page header
+        # Use grid internally so grid_remove()/grid() preserve row positions
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)   # table / empty row expands
+
+        # ── Row 0: page header ─────────────────────────────────────────────
         hdr = ctk.CTkFrame(self, fg_color="transparent")
-        hdr.pack(fill="x", padx=24, pady=(28, 0))
+        hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=(28, 0))
 
         ctk.CTkLabel(
             hdr, text="Overdue Equipment",
@@ -29,15 +33,19 @@ class AlertsScreen(ctk.CTkFrame):
             text_color=TEXT_SECONDARY, fg_color="transparent",
         ).pack(anchor="w", pady=(2, 0))
 
-        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
-            fill="x", pady=(16, 0)
+        # ── Row 1: divider ─────────────────────────────────────────────────
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).grid(
+            row=1, column=0, sticky="ew", pady=(16, 0)
         )
 
-        # Red banner (shown only when items exist)
-        self._banner = ctk.CTkFrame(self, fg_color=DANGER_LIGHT, corner_radius=0, border_width=0)
-        self._banner_rule = ctk.CTkFrame(self._banner, width=4, fg_color=DANGER, corner_radius=0)
-        self._banner_rule.pack(side="left", fill="y")
-        self._banner_rule.pack_propagate(False)
+        # ── Row 2: red banner (hidden until items exist) ───────────────────
+        self._banner = ctk.CTkFrame(self, fg_color=DANGER_LIGHT, corner_radius=0)
+        self._banner.grid(row=2, column=0, sticky="ew", padx=24, pady=(12, 0))
+        self._banner.grid_remove()   # hidden; grid_remove preserves row slot
+
+        rule = ctk.CTkFrame(self._banner, width=4, fg_color=DANGER, corner_radius=0)
+        rule.pack(side="left", fill="y")
+        rule.pack_propagate(False)
 
         banner_body = ctk.CTkFrame(self._banner, fg_color="transparent")
         banner_body.pack(side="left", fill="both", expand=True, padx=14, pady=10)
@@ -55,7 +63,7 @@ class AlertsScreen(ctk.CTkFrame):
             text_color=DANGER, fg_color="transparent", anchor="w",
         ).pack(fill="x", pady=(1, 0))
 
-        # Table
+        # ── Row 3: data table ──────────────────────────────────────────────
         self._table = DataTable(
             self,
             columns=[
@@ -67,10 +75,13 @@ class AlertsScreen(ctk.CTkFrame):
             ],
             height=460,
         )
-        self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+        self._table.grid(row=3, column=0, sticky="nsew", padx=24, pady=(16, 24))
 
-        # Empty state (initially hidden)
+        # ── Row 3: empty state (same slot, hidden until no items) ──────────
         self._empty = ctk.CTkFrame(self, fg_color="transparent")
+        self._empty.grid(row=3, column=0, sticky="nsew")
+        self._empty.grid_remove()
+
         ctk.CTkLabel(
             self._empty, text="✓",
             font=ctk.CTkFont(family=FONT_FAMILY, size=48),
@@ -100,24 +111,19 @@ class AlertsScreen(ctk.CTkFrame):
         self.after(0, lambda d=items: self._render(d))
 
     def _render(self, items):
-        # Toggle banner
         if items:
             count = len(items)
             noun = "item" if count == 1 else "items"
             self._banner_title.configure(
                 text=f"{count} {noun} require immediate maintenance attention"
             )
-            self._banner.pack(fill="x", padx=24, pady=(16, 0), before=self._table)
+            self._banner.grid()       # restore to row 2
+            self._empty.grid_remove()
+            self._table.grid()        # restore to row 3
         else:
-            self._banner.pack_forget()
-
-        # Toggle table vs empty state
-        if items:
-            self._empty.pack_forget()
-            self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
-        else:
-            self._table.pack_forget()
-            self._empty.pack(expand=True)
+            self._banner.grid_remove()
+            self._table.grid_remove()
+            self._empty.grid()        # restore to row 3
             return
 
         self._table.clear_rows()
