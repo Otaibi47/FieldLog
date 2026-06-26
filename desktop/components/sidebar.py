@@ -1,4 +1,6 @@
+import pathlib
 import customtkinter as ctk
+from PIL import Image
 from config import (
     FONT_FAMILY, TEXT_PRIMARY, TEXT_SECONDARY,
     SIDEBAR_BG, SIDEBAR_HOVER, SIDEBAR_ACTIVE_BG,
@@ -26,11 +28,22 @@ class Sidebar(ctk.CTkFrame):
     def _build(self):
         self.grid_columnconfigure(0, weight=1)
 
-        # ── Brand ─────────────────────────────────────────────────────────────
-        self.grid_rowconfigure(0, minsize=64)
-        brand = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0, height=64)
+        # ── Logo / Brand ──────────────────────────────────────────────────────
+        self.grid_rowconfigure(0, minsize=130)
+        brand = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0, height=130)
         brand.grid(row=0, column=0, sticky="ew")
         brand.pack_propagate(False)
+
+        _logo_path = pathlib.Path(__file__).parent / "assets" / "logo.png"
+        if _logo_path.exists():
+            _logo_img = ctk.CTkImage(
+                light_image=Image.open(_logo_path), size=(64, 64)
+            )
+            ctk.CTkLabel(
+                brand, image=_logo_img, text="", fg_color="transparent",
+            ).pack(anchor="center", pady=(14, 6))
+        else:
+            ctk.CTkFrame(brand, height=14, fg_color="transparent").pack()
 
         ctk.CTkLabel(
             brand,
@@ -38,19 +51,19 @@ class Sidebar(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
             text_color=TEXT_PRIMARY,
             fg_color="transparent",
-        ).pack(anchor="w", padx=20, pady=(18, 0))
+        ).pack(anchor="center")
         ctk.CTkLabel(
             brand,
             text="Maintenance Tracker",
             font=ctk.CTkFont(family=FONT_FAMILY, size=11),
             text_color=TEXT_SECONDARY,
             fg_color="transparent",
-        ).pack(anchor="w", padx=20)
+        ).pack(anchor="center", pady=(2, 0))
 
         # ── Divider ───────────────────────────────────────────────────────────
-        self.grid_rowconfigure(1, minsize=1)
+        self.grid_rowconfigure(1, minsize=25)
         ctk.CTkFrame(self, height=1, fg_color="#E5E7EB", corner_radius=0).grid(
-            row=1, column=0, sticky="ew",
+            row=1, column=0, sticky="ew", padx=12, pady=(12, 12),
         )
 
         # ── Section label ─────────────────────────────────────────────────────
