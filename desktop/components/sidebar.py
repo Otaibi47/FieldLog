@@ -36,11 +36,11 @@ class Sidebar(ctk.CTkFrame):
 
         _logo_path = pathlib.Path(__file__).parent / "assets" / "logo.png"
         if _logo_path.exists():
-            _logo_img = ctk.CTkImage(
+            self._logo_img = ctk.CTkImage(
                 light_image=Image.open(_logo_path), size=(64, 64)
             )
             ctk.CTkLabel(
-                brand, image=_logo_img, text="", fg_color="transparent",
+                brand, image=self._logo_img, text="", fg_color="transparent",
             ).pack(anchor="center", pady=(14, 6))
         else:
             ctk.CTkFrame(brand, height=14, fg_color="transparent").pack()
