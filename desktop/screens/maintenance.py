@@ -281,11 +281,30 @@ class MaintenanceScreen(ctk.CTkFrame):
 
     # ── exports ───────────────────────────────────────────────────────────────
 
-    def _export_excel(self):
+    def _ensure_pkg(self, pkg: str, install_name: str = None) -> bool:
+        """Import pkg; auto-install via sys.executable if missing. Returns True on success."""
+        import importlib, subprocess, sys
         try:
-            import openpyxl  # noqa: F401
+            importlib.import_module(pkg)
+            return True
         except ImportError:
-            messagebox.showerror("Missing library", "Run:  pip install openpyxl")
+            pass
+        try:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", install_name or pkg, "-q"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            importlib.import_module(pkg)
+            return True
+        except Exception as e:
+            self.after(0, lambda err=str(e): messagebox.showerror(
+                "Install failed",
+                f"Could not install {pkg}.\n\nRun manually:\n  pip install {install_name or pkg}\n\n{err}",
+            ))
+            return False
+
+    def _export_excel(self):
+        if not self._ensure_pkg("openpyxl"):
             return
 
         path = filedialog.asksaveasfilename(
@@ -303,55 +322,52 @@ class MaintenanceScreen(ctk.CTkFrame):
         ).start()
 
     def _do_excel(self, path: str, logs: list):
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, PatternFill
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Maintenance Log"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Maintenance Log"
 
-        headers = ["Equipment", "Type", "Performed By", "Date",
-                   "Next Due Date", "Description", "Parts Replaced"]
-        ws.append(headers)
+            headers = ["Equipment", "Type", "Performed By", "Date",
+                       "Next Due Date", "Description", "Parts Replaced"]
+            ws.append(headers)
 
-        # Style header row
-        accent_fill = PatternFill("solid", fgColor="1D4ED8")
-        for cell in ws[1]:
-            cell.font = Font(bold=True, color="FFFFFF", size=11)
-            cell.fill = accent_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[1].height = 20
+            accent_fill = PatternFill("solid", fgColor="1D4ED8")
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF", size=11)
+                cell.fill = accent_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            ws.row_dimensions[1].height = 20
 
-        # Data rows
-        for i, log in enumerate(logs):
-            ws.append([
-                log.get("equipment_name", ""),
-                (log.get("maintenance_type") or "").title(),
-                log.get("performed_by", ""),
-                (log.get("performed_at") or "")[:10],
-                log.get("next_due_date", ""),
-                log.get("description", ""),
-                log.get("parts_replaced", "") or "",
-            ])
-            # Alternate row shading
-            if i % 2 == 1:
-                fill = PatternFill("solid", fgColor="F9FAFB")
-                for cell in ws[i + 2]:
-                    cell.fill = fill
+            for i, log in enumerate(logs):
+                ws.append([
+                    log.get("equipment_name", ""),
+                    (log.get("maintenance_type") or "").title(),
+                    log.get("performed_by", ""),
+                    (log.get("performed_at") or "")[:10],
+                    log.get("next_due_date", ""),
+                    log.get("description", ""),
+                    log.get("parts_replaced", "") or "",
+                ])
+                if i % 2 == 1:
+                    fill = PatternFill("solid", fgColor="F9FAFB")
+                    for cell in ws[i + 2]:
+                        cell.fill = fill
 
-        # Auto-fit column widths
-        for col in ws.columns:
-            width = max(len(str(c.value or "")) for c in col)
-            ws.column_dimensions[col[0].column_letter].width = min(width + 4, 50)
+            for col in ws.columns:
+                width = max(len(str(c.value or "")) for c in col)
+                ws.column_dimensions[col[0].column_letter].width = min(width + 4, 50)
 
-        wb.save(path)
-        self.after(0, lambda: os.startfile(path))
+            wb.save(path)
+            self.after(0, lambda: os.startfile(path))
+
+        except Exception as e:
+            self.after(0, lambda err=str(e): messagebox.showerror("Export failed", err))
 
     def _export_pdf(self):
-        try:
-            from reportlab.platypus import SimpleDocTemplate  # noqa: F401
-        except ImportError:
-            messagebox.showerror("Missing library", "Run:  pip install reportlab")
+        if not self._ensure_pkg("reportlab"):
             return
 
         path = filedialog.asksaveasfilename(
@@ -369,71 +385,72 @@ class MaintenanceScreen(ctk.CTkFrame):
         ).start()
 
     def _do_pdf(self, path: str, logs: list):
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.units import mm
-        from reportlab.lib import colors
-        from reportlab.platypus import (
-            SimpleDocTemplate, Table, TableStyle,
-            Paragraph, Spacer,
-        )
-        from reportlab.lib.styles import getSampleStyleSheet
+        try:
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.units import mm
+            from reportlab.lib import colors
+            from reportlab.platypus import (
+                SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet
 
-        doc = SimpleDocTemplate(
-            path, pagesize=landscape(A4),
-            leftMargin=15 * mm, rightMargin=15 * mm,
-            topMargin=15 * mm, bottomMargin=15 * mm,
-        )
-        styles = getSampleStyleSheet()
-        elements = []
+            doc = SimpleDocTemplate(
+                path, pagesize=landscape(A4),
+                leftMargin=15 * mm, rightMargin=15 * mm,
+                topMargin=15 * mm, bottomMargin=15 * mm,
+            )
+            styles = getSampleStyleSheet()
+            elements = []
 
-        elements.append(Paragraph("FieldLog — Maintenance Report", styles["Title"]))
-        elements.append(
-            Paragraph(f"Generated: {date.today().isoformat()}   ·   "
-                      f"{len(logs)} record(s)", styles["Normal"])
-        )
-        elements.append(Spacer(1, 8 * mm))
+            elements.append(Paragraph("FieldLog — Maintenance Report", styles["Title"]))
+            elements.append(
+                Paragraph(
+                    f"Generated: {date.today().isoformat()}   ·   {len(logs)} record(s)",
+                    styles["Normal"],
+                )
+            )
+            elements.append(Spacer(1, 8 * mm))
 
-        col_headers = ["Equipment", "Type", "Performed By",
-                       "Date", "Next Due", "Description"]
-        data = [col_headers]
-        for log in logs:
-            desc = (log.get("description") or "")
-            if len(desc) > 70:
-                desc = desc[:67] + "…"
-            data.append([
-                log.get("equipment_name", ""),
-                (log.get("maintenance_type") or "").title(),
-                log.get("performed_by", ""),
-                (log.get("performed_at") or "")[:10],
-                log.get("next_due_date", ""),
-                desc,
-            ])
+            col_headers = ["Equipment", "Type", "Performed By", "Date", "Next Due", "Description"]
+            data = [col_headers]
+            for log in logs:
+                desc = (log.get("description") or "")
+                if len(desc) > 70:
+                    desc = desc[:67] + "…"
+                data.append([
+                    log.get("equipment_name", ""),
+                    (log.get("maintenance_type") or "").title(),
+                    log.get("performed_by", ""),
+                    (log.get("performed_at") or "")[:10],
+                    log.get("next_due_date", ""),
+                    desc,
+                ])
 
-        accent = colors.HexColor("#1D4ED8")
-        alt    = colors.HexColor("#F9FAFB")
+            accent = colors.HexColor("#1D4ED8")
+            alt    = colors.HexColor("#F9FAFB")
 
-        tbl = Table(data, repeatRows=1, hAlign="LEFT")
-        tbl.setStyle(TableStyle([
-            # Header
-            ("BACKGROUND",   (0, 0), (-1, 0), accent),
-            ("TEXTCOLOR",    (0, 0), (-1, 0), colors.white),
-            ("FONTNAME",     (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE",     (0, 0), (-1, 0), 9),
-            ("ALIGN",        (0, 0), (-1, 0), "CENTER"),
-            # Body
-            ("FONTSIZE",     (0, 1), (-1, -1), 8),
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, alt]),
-            # Grid
-            ("GRID",         (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
-            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING",   (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
-            ("LEFTPADDING",  (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(tbl)
+            tbl = Table(data, repeatRows=1, hAlign="LEFT")
+            tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0),  accent),
+                ("TEXTCOLOR",     (0, 0), (-1, 0),  colors.white),
+                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+                ("FONTSIZE",      (0, 0), (-1, 0),  9),
+                ("ALIGN",         (0, 0), (-1, 0),  "CENTER"),
+                ("FONTSIZE",      (0, 1), (-1, -1), 8),
+                ("ROWBACKGROUNDS",(0, 1), (-1, -1),  [colors.white, alt]),
+                ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
+                ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING",    (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(tbl)
 
-        doc.build(elements)
-        self.after(0, lambda: os.startfile(path))
+            doc.build(elements)
+            self.after(0, lambda: os.startfile(path))
+
+        except Exception as e:
+            self.after(0, lambda err=str(e): messagebox.showerror("Export failed", err))
 
 
 # ─────────────────────────── modal ───────────────────────────────────────────
