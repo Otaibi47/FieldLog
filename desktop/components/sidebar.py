@@ -34,7 +34,7 @@ class Sidebar(ctk.CTkFrame):
         brand.grid(row=0, column=0, sticky="ew")
         brand.pack_propagate(False)
 
-        _logo_path = pathlib.Path(__file__).parent / "assets" / "logo.png"
+        _logo_path = pathlib.Path(__file__).parent.parent / "assets" / "logo.png"
         if _logo_path.exists():
             self._logo_img = ctk.CTkImage(
                 light_image=Image.open(_logo_path), size=(64, 64)
