@@ -1,10 +1,12 @@
+import os
 import threading
 import customtkinter as ctk
 from datetime import datetime, date, timedelta
+from tkinter import filedialog, messagebox
 from components.data_table import DataTable
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    ACCENT, ACCENT_LIGHT, DANGER, FONT_FAMILY,
+    ACCENT, ACCENT_LIGHT, SUCCESS, DANGER, FONT_FAMILY,
 )
 from screens.equipment import _field, _dropdown
 
@@ -16,11 +18,20 @@ class MaintenanceScreen(ctk.CTkFrame):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
         self._equipment_list: list[dict] = []
+        self._all_logs: list[dict] = []       # full fetched set
+        self._current_logs: list[dict] = []   # after filters
         self._build()
 
+    # ── layout ────────────────────────────────────────────────────────────────
+
     def _build(self):
+        # grid layout avoids pack ordering issues when toggling custom date row
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(5, weight=1)   # table row expands
+
+        # ── Row 0: page header ─────────────────────────────────────────────
         hdr = ctk.CTkFrame(self, fg_color="transparent")
-        hdr.pack(fill="x", padx=24, pady=(28, 0))
+        hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=(28, 0))
 
         left = ctk.CTkFrame(hdr, fg_color="transparent")
         left.pack(side="left", fill="y")
@@ -35,39 +46,131 @@ class MaintenanceScreen(ctk.CTkFrame):
             text_color=TEXT_SECONDARY, fg_color="transparent",
         ).pack(anchor="w", pady=(2, 0))
 
-        right = ctk.CTkFrame(hdr, fg_color="transparent")
-        right.pack(side="right", fill="y", anchor="center")
-
-        self._filter_var = ctk.StringVar(value="All Equipment")
-        self._filter_menu = ctk.CTkOptionMenu(
-            right, values=["All Equipment"],
-            variable=self._filter_var,
-            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=SURFACE,
-            button_color="#E5E7EB",
-            button_hover_color="#D1D5DB",
-            text_color=TEXT_PRIMARY,
-            dropdown_fg_color=SURFACE,
-            dropdown_text_color=TEXT_PRIMARY,
-            dropdown_hover_color=ACCENT_LIGHT,
-            corner_radius=6, height=36, width=170,
-            command=lambda _: self._load_logs(),
-        )
-        self._filter_menu.pack(side="right", padx=(8, 0))
-
         ctk.CTkButton(
-            right, text="+ Log Maintenance",
+            hdr, text="+ Log Maintenance",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=ACCENT, hover_color="#1E40AF",
-            text_color="#FFFFFF",
+            fg_color=ACCENT, hover_color="#1E40AF", text_color="#FFFFFF",
             corner_radius=8, height=36,
             command=self._open_log_form,
-        ).pack(side="right")
+        ).pack(side="right", anchor="center")
 
-        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
-            fill="x", pady=(16, 0)
+        # ── Row 1: divider ─────────────────────────────────────────────────
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).grid(
+            row=1, column=0, sticky="ew", pady=(16, 0)
         )
 
+        # ── Row 2: filter bar ──────────────────────────────────────────────
+        fb = ctk.CTkFrame(self, fg_color="transparent")
+        fb.grid(row=2, column=0, sticky="ew", padx=24, pady=(12, 0))
+
+        # Export buttons (right — pack first so they don't get pushed off)
+        ctk.CTkButton(
+            fb, text="Export PDF", width=95,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=SURFACE, text_color=DANGER,
+            border_width=1, border_color=BORDER,
+            hover_color="#FEF2F2", corner_radius=6, height=32,
+            command=self._export_pdf,
+        ).pack(side="right", padx=(6, 0))
+
+        ctk.CTkButton(
+            fb, text="Export Excel", width=105,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=SURFACE, text_color=SUCCESS,
+            border_width=1, border_color=BORDER,
+            hover_color="#F0FDF4", corner_radius=6, height=32,
+            command=self._export_excel,
+        ).pack(side="right", padx=(6, 0))
+
+        # Separator pip before export buttons
+        ctk.CTkFrame(fb, width=1, fg_color=BORDER, corner_radius=0).pack(
+            side="right", fill="y", padx=(8, 8)
+        )
+
+        # Technician search (right of filters, left of separator)
+        self._tech_var = ctk.StringVar()
+        ctk.CTkEntry(
+            fb, textvariable=self._tech_var,
+            placeholder_text="Search technician…",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, border_color=BORDER, border_width=1,
+            corner_radius=6, height=32, width=190,
+        ).pack(side="right", padx=(6, 0))
+        self._tech_var.trace_add("write", lambda *_: self._apply_and_render())
+
+        # Equipment filter
+        self._eq_var = ctk.StringVar(value="All Equipment")
+        self._eq_menu = ctk.CTkOptionMenu(
+            fb, values=["All Equipment"],
+            variable=self._eq_var,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            text_color=TEXT_PRIMARY, dropdown_fg_color=SURFACE,
+            dropdown_text_color=TEXT_PRIMARY, dropdown_hover_color=ACCENT_LIGHT,
+            corner_radius=6, height=32, width=170,
+            command=lambda _: self._apply_and_render(),
+        )
+        self._eq_menu.pack(side="left", padx=(0, 6))
+
+        # Date range filter
+        self._date_var = ctk.StringVar(value="All Time")
+        ctk.CTkOptionMenu(
+            fb,
+            values=["All Time", "Last 7 Days", "Last 30 Days", "Last 90 Days", "Custom Range"],
+            variable=self._date_var,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            text_color=TEXT_PRIMARY, dropdown_fg_color=SURFACE,
+            dropdown_text_color=TEXT_PRIMARY, dropdown_hover_color=ACCENT_LIGHT,
+            corner_radius=6, height=32, width=148,
+            command=self._on_date_range_change,
+        ).pack(side="left")
+
+        # ── Row 3: custom date row (hidden until "Custom Range" selected) ──
+        self._custom_row = ctk.CTkFrame(self, fg_color="transparent")
+        self._custom_row.grid(row=3, column=0, sticky="ew", padx=24, pady=(8, 0))
+        self._custom_row.grid_remove()  # hidden; grid_remove preserves row slot
+
+        ctk.CTkLabel(
+            self._custom_row, text="From:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(side="left", padx=(0, 4))
+        self._from_entry = ctk.CTkEntry(
+            self._custom_row, placeholder_text="YYYY-MM-DD",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, border_color=BORDER, border_width=1,
+            corner_radius=6, height=32, width=130,
+        )
+        self._from_entry.pack(side="left", padx=(0, 12))
+
+        ctk.CTkLabel(
+            self._custom_row, text="To:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(side="left", padx=(0, 4))
+        self._to_entry = ctk.CTkEntry(
+            self._custom_row, placeholder_text="YYYY-MM-DD",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, border_color=BORDER, border_width=1,
+            corner_radius=6, height=32, width=130,
+        )
+        self._to_entry.pack(side="left", padx=(0, 12))
+
+        ctk.CTkButton(
+            self._custom_row, text="Apply",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=ACCENT, hover_color="#1E40AF", text_color="#FFFFFF",
+            corner_radius=6, height=32, width=70,
+            command=self._apply_and_render,
+        ).pack(side="left")
+
+        # ── Row 4: divider ─────────────────────────────────────────────────
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).grid(
+            row=4, column=0, sticky="ew", pady=(12, 0)
+        )
+
+        # ── Row 5: table ───────────────────────────────────────────────────
         self._table = DataTable(
             self,
             columns=[
@@ -77,43 +180,91 @@ class MaintenanceScreen(ctk.CTkFrame):
                 ("Date",         110),
                 ("Next Due",     110),
             ],
-            height=520,
+            height=480,
         )
-        self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+        self._table.grid(row=5, column=0, sticky="nsew", padx=24, pady=(16, 24))
+
+    # ── date range toggle ─────────────────────────────────────────────────────
+
+    def _on_date_range_change(self, value: str):
+        if value == "Custom Range":
+            self._custom_row.grid()
+        else:
+            self._custom_row.grid_remove()
+            self._apply_and_render()
 
     # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
-        threading.Thread(target=self._load_all, daemon=True).start()
+        threading.Thread(target=self._fetch_all, daemon=True).start()
 
-    def _load_all(self):
+    def _fetch_all(self):
         try:
             eq = self.api.get_equipment()
         except Exception:
             eq = []
-        self.after(0, lambda d=eq: self._update_filter(d))
-        self._load_logs_data(None)
-
-    def _update_filter(self, equipment_list):
-        self._equipment_list = equipment_list
-        names = ["All Equipment"] + [e["name"] for e in equipment_list]
-        self._filter_menu.configure(values=names)
-
-    def _load_logs(self):
-        threading.Thread(target=self._load_logs_data, args=(None,), daemon=True).start()
-
-    def _load_logs_data(self, _):
-        selected = self._filter_var.get()
-        eq_id = next(
-            (e["id"] for e in self._equipment_list if e["name"] == selected), None
-        )
         try:
-            logs = self.api.get_maintenance_logs(equipment_id=eq_id)
+            logs = self.api.get_maintenance_logs()   # fetch all; filter client-side
         except Exception:
             logs = []
-        self.after(0, lambda d=logs: self._render(d))
+        self.after(0, lambda: self._on_loaded(eq, logs))
 
-    def _render(self, logs):
+    def _on_loaded(self, eq: list, logs: list):
+        self._equipment_list = eq
+        self._all_logs = logs
+        names = ["All Equipment"] + [e["name"] for e in eq]
+        self._eq_menu.configure(values=names)
+        self._apply_and_render()
+
+    # ── filtering ─────────────────────────────────────────────────────────────
+
+    def _apply_and_render(self):
+        result = self._all_logs[:]
+
+        # Equipment filter
+        eq_name = self._eq_var.get()
+        if eq_name != "All Equipment":
+            result = [l for l in result if l.get("equipment_name") == eq_name]
+
+        # Date range filter
+        dr = self._date_var.get()
+        today = date.today()
+        cutoff_from = cutoff_to = None
+
+        if dr == "Last 7 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=7), today
+        elif dr == "Last 30 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=30), today
+        elif dr == "Last 90 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=90), today
+        elif dr == "Custom Range":
+            try:
+                cutoff_from = date.fromisoformat(self._from_entry.get().strip())
+                cutoff_to   = date.fromisoformat(self._to_entry.get().strip())
+            except ValueError:
+                cutoff_from = cutoff_to = None
+
+        if cutoff_from and cutoff_to:
+            filtered = []
+            for l in result:
+                raw = (l.get("performed_at") or "")[:10]
+                try:
+                    if cutoff_from <= date.fromisoformat(raw) <= cutoff_to:
+                        filtered.append(l)
+                except ValueError:
+                    pass
+            result = filtered
+
+        # Technician search
+        query = self._tech_var.get().strip().lower()
+        if query:
+            result = [l for l in result
+                      if query in (l.get("performed_by") or "").lower()]
+
+        self._current_logs = result
+        self._render(result)
+
+    def _render(self, logs: list):
         self._table.clear_rows()
         for i, log in enumerate(logs):
             date_str = (log.get("performed_at") or "")[:10] or "—"
@@ -127,6 +278,162 @@ class MaintenanceScreen(ctk.CTkFrame):
 
     def _open_log_form(self):
         MaintenanceFormModal(self, self.api, self._equipment_list, on_save=self.refresh)
+
+    # ── exports ───────────────────────────────────────────────────────────────
+
+    def _export_excel(self):
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            messagebox.showerror("Missing library", "Run:  pip install openpyxl")
+            return
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx")],
+            title="Export Maintenance Log",
+            initialfile="FieldLog_Maintenance_Report",
+        )
+        if not path:
+            return
+
+        logs = self._current_logs[:]
+        threading.Thread(
+            target=self._do_excel, args=(path, logs), daemon=True
+        ).start()
+
+    def _do_excel(self, path: str, logs: list):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, PatternFill
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Maintenance Log"
+
+        headers = ["Equipment", "Type", "Performed By", "Date",
+                   "Next Due Date", "Description", "Parts Replaced"]
+        ws.append(headers)
+
+        # Style header row
+        accent_fill = PatternFill("solid", fgColor="1D4ED8")
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF", size=11)
+            cell.fill = accent_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 20
+
+        # Data rows
+        for i, log in enumerate(logs):
+            ws.append([
+                log.get("equipment_name", ""),
+                (log.get("maintenance_type") or "").title(),
+                log.get("performed_by", ""),
+                (log.get("performed_at") or "")[:10],
+                log.get("next_due_date", ""),
+                log.get("description", ""),
+                log.get("parts_replaced", "") or "",
+            ])
+            # Alternate row shading
+            if i % 2 == 1:
+                fill = PatternFill("solid", fgColor="F9FAFB")
+                for cell in ws[i + 2]:
+                    cell.fill = fill
+
+        # Auto-fit column widths
+        for col in ws.columns:
+            width = max(len(str(c.value or "")) for c in col)
+            ws.column_dimensions[col[0].column_letter].width = min(width + 4, 50)
+
+        wb.save(path)
+        self.after(0, lambda: os.startfile(path))
+
+    def _export_pdf(self):
+        try:
+            from reportlab.platypus import SimpleDocTemplate  # noqa: F401
+        except ImportError:
+            messagebox.showerror("Missing library", "Run:  pip install reportlab")
+            return
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            title="Export Maintenance Log as PDF",
+            initialfile="FieldLog_Maintenance_Report",
+        )
+        if not path:
+            return
+
+        logs = self._current_logs[:]
+        threading.Thread(
+            target=self._do_pdf, args=(path, logs), daemon=True
+        ).start()
+
+    def _do_pdf(self, path: str, logs: list):
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from reportlab.platypus import (
+            SimpleDocTemplate, Table, TableStyle,
+            Paragraph, Spacer,
+        )
+        from reportlab.lib.styles import getSampleStyleSheet
+
+        doc = SimpleDocTemplate(
+            path, pagesize=landscape(A4),
+            leftMargin=15 * mm, rightMargin=15 * mm,
+            topMargin=15 * mm, bottomMargin=15 * mm,
+        )
+        styles = getSampleStyleSheet()
+        elements = []
+
+        elements.append(Paragraph("FieldLog — Maintenance Report", styles["Title"]))
+        elements.append(
+            Paragraph(f"Generated: {date.today().isoformat()}   ·   "
+                      f"{len(logs)} record(s)", styles["Normal"])
+        )
+        elements.append(Spacer(1, 8 * mm))
+
+        col_headers = ["Equipment", "Type", "Performed By",
+                       "Date", "Next Due", "Description"]
+        data = [col_headers]
+        for log in logs:
+            desc = (log.get("description") or "")
+            if len(desc) > 70:
+                desc = desc[:67] + "…"
+            data.append([
+                log.get("equipment_name", ""),
+                (log.get("maintenance_type") or "").title(),
+                log.get("performed_by", ""),
+                (log.get("performed_at") or "")[:10],
+                log.get("next_due_date", ""),
+                desc,
+            ])
+
+        accent = colors.HexColor("#1D4ED8")
+        alt    = colors.HexColor("#F9FAFB")
+
+        tbl = Table(data, repeatRows=1, hAlign="LEFT")
+        tbl.setStyle(TableStyle([
+            # Header
+            ("BACKGROUND",   (0, 0), (-1, 0), accent),
+            ("TEXTCOLOR",    (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",     (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",     (0, 0), (-1, 0), 9),
+            ("ALIGN",        (0, 0), (-1, 0), "CENTER"),
+            # Body
+            ("FONTSIZE",     (0, 1), (-1, -1), 8),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, alt]),
+            # Grid
+            ("GRID",         (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
+            ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",   (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(tbl)
+
+        doc.build(elements)
+        self.after(0, lambda: os.startfile(path))
 
 
 # ─────────────────────────── modal ───────────────────────────────────────────
@@ -168,11 +475,11 @@ class MaintenanceFormModal(ctk.CTkToplevel):
         body.pack(fill="both", expand=True)
 
         eq_names = [e["name"] for e in self.equipment_list]
-        self._eq_var       = _dropdown(body, "Equipment",                    eq_names or ["No equipment yet"], eq_names[0] if eq_names else "")
-        self._type_var     = _dropdown(body, "Maintenance Type",             ["routine","corrective","emergency"], "routine")
-        self._performed_by = _field(body, "Performed By",                   "Technician name")
-        self._description  = _field(body, "Description",                    "What was done?")
-        self._parts        = _field(body, "Parts Replaced (optional)",      "")
+        self._eq_var       = _dropdown(body, "Equipment",               eq_names or ["No equipment yet"], eq_names[0] if eq_names else "")
+        self._type_var     = _dropdown(body, "Maintenance Type",        ["routine","corrective","emergency"], "routine")
+        self._performed_by = _field(body, "Performed By",               "Technician name")
+        self._description  = _field(body, "Description",                "What was done?")
+        self._parts        = _field(body, "Parts Replaced (optional)",  "")
         self._performed_at = _field(
             body, "Performed At (ISO datetime)", "2024-06-15T09:00:00",
             datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -203,8 +510,8 @@ class MaintenanceFormModal(ctk.CTkToplevel):
         ctk.CTkButton(
             foot, text="Save Log", width=110,
             fg_color=ACCENT, hover_color="#1E40AF",
-            text_color="#FFFFFF",
-            corner_radius=6, command=self._save,
+            text_color="#FFFFFF", corner_radius=6,
+            command=self._save,
         ).pack(side="right")
 
     def _save(self):
