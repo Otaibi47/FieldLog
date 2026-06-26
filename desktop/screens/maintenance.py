@@ -304,9 +304,6 @@ class MaintenanceScreen(ctk.CTkFrame):
             return False
 
     def _export_excel(self):
-        if not self._ensure_pkg("openpyxl"):
-            return
-
         path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
@@ -315,14 +312,13 @@ class MaintenanceScreen(ctk.CTkFrame):
         )
         if not path:
             return
-
         logs = self._current_logs[:]
-        threading.Thread(
-            target=self._do_excel, args=(path, logs), daemon=True
-        ).start()
+        threading.Thread(target=self._do_excel, args=(path, logs), daemon=True).start()
 
     def _do_excel(self, path: str, logs: list):
         try:
+            if not self._ensure_pkg("openpyxl"):
+                return
             import openpyxl
             from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -367,9 +363,6 @@ class MaintenanceScreen(ctk.CTkFrame):
             self.after(0, lambda err=str(e): messagebox.showerror("Export failed", err))
 
     def _export_pdf(self):
-        if not self._ensure_pkg("reportlab"):
-            return
-
         path = filedialog.asksaveasfilename(
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],
@@ -378,14 +371,13 @@ class MaintenanceScreen(ctk.CTkFrame):
         )
         if not path:
             return
-
         logs = self._current_logs[:]
-        threading.Thread(
-            target=self._do_pdf, args=(path, logs), daemon=True
-        ).start()
+        threading.Thread(target=self._do_pdf, args=(path, logs), daemon=True).start()
 
     def _do_pdf(self, path: str, logs: list):
         try:
+            if not self._ensure_pkg("reportlab"):
+                return
             from reportlab.lib.pagesizes import A4, landscape
             from reportlab.lib.units import mm
             from reportlab.lib import colors
@@ -416,7 +408,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             for log in logs:
                 desc = (log.get("description") or "")
                 if len(desc) > 70:
-                    desc = desc[:67] + "…"
+                    desc = desc[:67] + "..."
                 data.append([
                     log.get("equipment_name", ""),
                     (log.get("maintenance_type") or "").title(),
