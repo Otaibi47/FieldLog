@@ -308,7 +308,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
             title="Export Maintenance Log",
-            initialfile="FieldLog_Maintenance_Report",
+            initialfile=f"FieldLog_Maintenance_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         )
         if not path:
             return
@@ -367,7 +367,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],
             title="Export Maintenance Log as PDF",
-            initialfile="FieldLog_Maintenance_Report",
+            initialfile=f"FieldLog_Maintenance_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         )
         if not path:
             return
