@@ -371,74 +371,191 @@ class MaintenanceScreen(ctk.CTkFrame):
         )
         if not path:
             return
-        logs = self._current_logs[:]
-        threading.Thread(target=self._do_pdf, args=(path, logs), daemon=True).start()
+        logs       = self._current_logs[:]
+        eq_filter  = self._eq_var.get()
+        dr_filter  = self._date_var.get()
+        tech_filter= self._tech_var.get().strip()
+        threading.Thread(
+            target=self._do_pdf,
+            args=(path, logs, eq_filter, dr_filter, tech_filter),
+            daemon=True,
+        ).start()
 
-    def _do_pdf(self, path: str, logs: list):
+    def _do_pdf(self, path: str, logs: list,
+                eq_filter: str = "All Equipment",
+                dr_filter: str = "All Time",
+                tech_filter: str = ""):
         try:
             if not self._ensure_pkg("reportlab"):
                 return
+
             from reportlab.lib.pagesizes import A4, landscape
             from reportlab.lib.units import mm
             from reportlab.lib import colors
             from reportlab.platypus import (
-                SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+                SimpleDocTemplate, Table, TableStyle,
+                Paragraph, Spacer, HRFlowable,
             )
-            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.styles import ParagraphStyle
+            from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+            PAGE = landscape(A4)
+            PW, PH = PAGE
+            MARGIN  = 18 * mm
+            HDR_H   = 16 * mm   # blue header bar height
+            FOOT_H  = 12 * mm
+            USABLE  = PW - 2 * MARGIN
+
+            C_ACCENT      = colors.HexColor("#1D4ED8")
+            C_ACCENT_DARK = colors.HexColor("#1E3A8A")
+            C_ACCENT_MUTE = colors.HexColor("#BFDBFE")
+            C_GRAY        = colors.HexColor("#6B7280")
+            C_LIGHT_GRAY  = colors.HexColor("#F3F4F6")
+            C_ALT_ROW     = colors.HexColor("#F9FAFB")
+            C_BORDER      = colors.HexColor("#E5E7EB")
+            C_TEXT        = colors.HexColor("#111827")
+
+            # ── header / footer drawn on every page ────────────────────────
+            def _draw_chrome(canvas, doc):
+                canvas.saveState()
+
+                # Blue header bar
+                canvas.setFillColor(C_ACCENT)
+                canvas.rect(0, PH - HDR_H, PW, HDR_H, fill=1, stroke=0)
+
+                # Brand: "FieldLog"
+                canvas.setFillColor(colors.white)
+                canvas.setFont("Helvetica-Bold", 13)
+                canvas.drawString(MARGIN, PH - HDR_H + 5.5 * mm, "FieldLog")
+
+                # Separator pip
+                canvas.setFillColor(C_ACCENT_MUTE)
+                canvas.rect(MARGIN + 32 * mm, PH - HDR_H + 4 * mm, 0.4 * mm, 8 * mm,
+                            fill=1, stroke=0)
+
+                # Subtitle
+                canvas.setFont("Helvetica", 10)
+                canvas.drawString(MARGIN + 35 * mm, PH - HDR_H + 5.5 * mm,
+                                  "Maintenance Report")
+
+                # Date (right-aligned)
+                canvas.setFont("Helvetica", 9)
+                canvas.drawRightString(PW - MARGIN, PH - HDR_H + 5.5 * mm,
+                                       date.today().strftime("%B %d, %Y"))
+
+                # Footer rule
+                canvas.setStrokeColor(C_BORDER)
+                canvas.setLineWidth(0.5)
+                canvas.line(MARGIN, FOOT_H - 2 * mm, PW - MARGIN, FOOT_H - 2 * mm)
+
+                canvas.setFillColor(C_GRAY)
+                canvas.setFont("Helvetica", 7.5)
+                canvas.drawString(MARGIN, FOOT_H - 6 * mm, "FieldLog  -  Confidential")
+                canvas.drawRightString(PW - MARGIN, FOOT_H - 6 * mm,
+                                       f"Page {doc.page}")
+
+                canvas.restoreState()
 
             doc = SimpleDocTemplate(
-                path, pagesize=landscape(A4),
-                leftMargin=15 * mm, rightMargin=15 * mm,
-                topMargin=15 * mm, bottomMargin=15 * mm,
+                path, pagesize=PAGE,
+                leftMargin=MARGIN, rightMargin=MARGIN,
+                topMargin=HDR_H + 10 * mm,
+                bottomMargin=FOOT_H + 6 * mm,
             )
-            styles = getSampleStyleSheet()
-            elements = []
 
-            elements.append(Paragraph("FieldLog — Maintenance Report", styles["Title"]))
-            elements.append(
-                Paragraph(
-                    f"Generated: {date.today().isoformat()}   ·   {len(logs)} record(s)",
-                    styles["Normal"],
-                )
+            # ── paragraph styles ───────────────────────────────────────────
+            normal = ParagraphStyle("fl_normal", fontName="Helvetica",
+                                    fontSize=8, leading=11, textColor=C_TEXT)
+            bold   = ParagraphStyle("fl_bold",   fontName="Helvetica-Bold",
+                                    fontSize=8, leading=11, textColor=C_TEXT)
+            muted  = ParagraphStyle("fl_muted",  fontName="Helvetica",
+                                    fontSize=8, leading=11, textColor=C_GRAY)
+
+            elements: list = []
+
+            # ── summary bar ────────────────────────────────────────────────
+            active_filters = []
+            if eq_filter   != "All Equipment": active_filters.append(f"Equipment: {eq_filter}")
+            if dr_filter   != "All Time":      active_filters.append(f"Period: {dr_filter}")
+            if tech_filter:                    active_filters.append(f"Technician: {tech_filter}")
+            filter_str = "  |  ".join(active_filters) if active_filters else "All records"
+
+            summary_data = [[
+                Paragraph(f"<b>{len(logs)}</b>  records", bold),
+                Paragraph(filter_str, muted),
+                Paragraph(f"Generated {date.today().strftime('%d %b %Y')}", muted),
+            ]]
+            summary_tbl = Table(
+                summary_data,
+                colWidths=[USABLE * 0.15, USABLE * 0.60, USABLE * 0.25],
             )
-            elements.append(Spacer(1, 8 * mm))
+            summary_tbl.setStyle(TableStyle([
+                ("BACKGROUND",   (0, 0), (-1, -1), C_LIGHT_GRAY),
+                ("ROWPADDING",   (0, 0), (-1, -1), 4),
+                ("TOPPADDING",   (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+                ("LEFTPADDING",  (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("LINEBELOW",    (0, 0), (-1, -1), 0.5, C_BORDER),
+                ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+            ]))
+            elements.append(summary_tbl)
+            elements.append(Spacer(1, 5 * mm))
 
-            col_headers = ["Equipment", "Type", "Performed By", "Date", "Next Due", "Description"]
-            data = [col_headers]
+            # ── data table ─────────────────────────────────────────────────
+            col_widths = [
+                USABLE * 0.18,   # Equipment
+                USABLE * 0.10,   # Type
+                USABLE * 0.13,   # Performed By
+                USABLE * 0.09,   # Date
+                USABLE * 0.09,   # Next Due
+                USABLE * 0.41,   # Description
+            ]
+
+            hdr_style = ParagraphStyle("fl_hdr", fontName="Helvetica-Bold",
+                                       fontSize=8, leading=10,
+                                       textColor=colors.white)
+            col_labels = ["Equipment", "Type", "Performed By",
+                          "Date", "Next Due", "Description"]
+            data = [[Paragraph(h, hdr_style) for h in col_labels]]
+
             for log in logs:
                 desc = (log.get("description") or "")
-                if len(desc) > 70:
-                    desc = desc[:67] + "..."
+                if len(desc) > 120:
+                    desc = desc[:117] + "..."
                 data.append([
-                    log.get("equipment_name", ""),
-                    (log.get("maintenance_type") or "").title(),
-                    log.get("performed_by", ""),
-                    (log.get("performed_at") or "")[:10],
-                    log.get("next_due_date", ""),
-                    desc,
+                    Paragraph(log.get("equipment_name", "") or "", normal),
+                    Paragraph((log.get("maintenance_type") or "").title(), normal),
+                    Paragraph(log.get("performed_by", "") or "", normal),
+                    Paragraph((log.get("performed_at") or "")[:10], normal),
+                    Paragraph(log.get("next_due_date", "") or "", normal),
+                    Paragraph(desc, normal),
                 ])
 
-            accent = colors.HexColor("#1D4ED8")
-            alt    = colors.HexColor("#F9FAFB")
-
-            tbl = Table(data, repeatRows=1, hAlign="LEFT")
+            tbl = Table(data, colWidths=col_widths, repeatRows=1, hAlign="LEFT")
             tbl.setStyle(TableStyle([
-                ("BACKGROUND",    (0, 0), (-1, 0),  accent),
-                ("TEXTCOLOR",     (0, 0), (-1, 0),  colors.white),
-                ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
-                ("FONTSIZE",      (0, 0), (-1, 0),  9),
-                ("ALIGN",         (0, 0), (-1, 0),  "CENTER"),
-                ("FONTSIZE",      (0, 1), (-1, -1), 8),
-                ("ROWBACKGROUNDS",(0, 1), (-1, -1),  [colors.white, alt]),
-                ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#E5E7EB")),
-                ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING",    (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+                # Header row
+                ("BACKGROUND",    (0, 0), (-1, 0),  C_ACCENT),
+                ("TOPPADDING",    (0, 0), (-1, 0),  7),
+                ("BOTTOMPADDING", (0, 0), (-1, 0),  7),
+                ("LEFTPADDING",   (0, 0), (-1, 0),  8),
+                # Body rows
+                ("ROWBACKGROUNDS",(0, 1), (-1, -1),  [colors.white, C_ALT_ROW]),
+                ("TOPPADDING",    (0, 1), (-1, -1),  5),
+                ("BOTTOMPADDING", (0, 1), (-1, -1),  5),
+                ("LEFTPADDING",   (0, 1), (-1, -1),  8),
+                ("RIGHTPADDING",  (0, 0), (-1, -1),  6),
+                # Grid
+                ("LINEBELOW",     (0, 0), (-1, -1),  0.35, C_BORDER),
+                ("VALIGN",        (0, 0), (-1, -1),  "TOP"),
+                # Accent left rule on first column
+                ("LINEAFTER",     (0, 0), (0, -1),   0.5,  C_BORDER),
             ]))
             elements.append(tbl)
 
-            doc.build(elements)
+            doc.build(elements,
+                      onFirstPage=_draw_chrome,
+                      onLaterPages=_draw_chrome)
             self.after(0, lambda: os.startfile(path))
 
         except Exception as e:
