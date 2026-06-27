@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from datetime import date, datetime
 
 from database import init_db, AsyncSessionLocal
-from routers import equipment, maintenance
+from routers import equipment, maintenance, audit
 from alert_service import run_alert_check
 from auth import create_token, verify_token
 from schemas import DashboardSummary
@@ -45,6 +45,7 @@ app.add_middleware(
 
 app.include_router(equipment.router)
 app.include_router(maintenance.router)
+app.include_router(audit.router)
 
 
 @app.get("/token")

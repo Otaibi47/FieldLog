@@ -82,6 +82,18 @@ class APIClient:
                 return r.json()
         return self._run(_fetch())
 
+    def get_audit_logs(self, limit: int = 300) -> list[dict]:
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.get(
+                    f"{self.base}/audit",
+                    headers=self._headers(),
+                    params={"limit": limit},
+                )
+                r.raise_for_status()
+                return r.json()
+        return self._run(_fetch())
+
     def get_dashboard_summary(self) -> dict:
         async def _fetch():
             async with httpx.AsyncClient(timeout=15) as c:

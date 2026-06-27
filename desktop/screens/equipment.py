@@ -1,10 +1,12 @@
+import sys
+import subprocess
 import threading
 import customtkinter as ctk
 from components.data_table import DataTable
 from components.status_badge import StatusBadge
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    ACCENT, ACCENT_LIGHT, DANGER, DANGER_LIGHT, FONT_FAMILY,
+    ACCENT, ACCENT_LIGHT, DANGER, DANGER_LIGHT, FONT_FAMILY, API_BASE_URL,
 )
 
 
@@ -50,12 +52,13 @@ class EquipmentScreen(ctk.CTkFrame):
         self._table = DataTable(
             self,
             columns=[
-                ("Name",     210),
-                ("Type",     100),
-                ("Location", 170),
-                ("Status",   130),
-                ("Next Due", 110),
-                ("Actions",  130),
+                ("Name",     200),
+                ("Type",      95),
+                ("Location", 160),
+                ("Status",   120),
+                ("Next Due", 105),
+                ("QR",        60),
+                ("Actions",  140),
             ],
             height=520,
         )
@@ -83,6 +86,23 @@ class EquipmentScreen(ctk.CTkFrame):
             def make_badge(status):
                 def _b(f):
                     StatusBadge(f, status=status).pack(anchor="w", pady=4)
+                return _b
+
+            def make_qr(it):
+                def _b(f):
+                    ctk.CTkButton(
+                        f, text="QR",
+                        font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+                        fg_color="#172554",
+                        hover_color="#1D3A8A",
+                        border_width=1,
+                        border_color="#60A5FA",
+                        text_color="#60A5FA",
+                        corner_radius=6,
+                        height=28, width=46,
+                        cursor="hand2",
+                        command=lambda x=it: _QRDialog(self, x),
+                    ).pack(side="left", padx=(0, 6))
                 return _b
 
             def make_actions(it):
@@ -122,6 +142,7 @@ class EquipmentScreen(ctk.CTkFrame):
                 item.get("location", "—"),
                 make_badge(item.get("status", "operational")),
                 item.get("next_maintenance_due", "—"),
+                make_qr(item),
                 make_actions(item),
             ], even=(i % 2 == 1))
 
@@ -332,3 +353,142 @@ def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
         height=38,
     ).pack(fill="x", padx=24)
     return var
+
+
+# ─────────────────────────── QR code dialog ──────────────────────────────────
+
+def _ensure_pkg(pkg: str):
+    import importlib
+    try:
+        importlib.import_module(pkg.split("[")[0])
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+
+
+class _QRDialog(ctk.CTkToplevel):
+    def __init__(self, master, item: dict):
+        super().__init__(master)
+        self._item = item
+        self.title(f"QR Code — {item.get('name', '')}")
+        self.geometry("400x460")
+        self.resizable(False, False)
+        self.configure(fg_color=SURFACE)
+        self.grab_set()
+        self._build()
+        threading.Thread(target=self._generate, daemon=True).start()
+
+    def _build(self):
+        ctk.CTkFrame(self, height=4, fg_color=ACCENT, corner_radius=0).pack(fill="x")
+
+        ctk.CTkLabel(
+            self,
+            text=self._item.get("name", ""),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(pady=(18, 2))
+        ctk.CTkLabel(
+            self,
+            text="Scan to view full maintenance history",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack()
+
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
+            fill="x", pady=(14, 0)
+        )
+
+        # Image area — swapped in after generation
+        self._img_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._img_frame.pack(expand=True, fill="both")
+
+        self._status_lbl = ctk.CTkLabel(
+            self._img_frame,
+            text="Generating QR code...",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        )
+        self._status_lbl.pack(expand=True)
+
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(fill="x")
+
+        foot = ctk.CTkFrame(self, fg_color="transparent")
+        foot.pack(fill="x", padx=20, pady=12)
+
+        self._url_lbl = ctk.CTkLabel(
+            foot, text="",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+            wraplength=300,
+        )
+        self._url_lbl.pack(anchor="w")
+
+        ctk.CTkButton(
+            foot, text="Close",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_width=1, border_color=BORDER,
+            hover_color=BG, corner_radius=6,
+            height=34, width=80,
+            command=self.destroy,
+        ).pack(side="right", pady=(8, 0))
+
+        self._copy_btn = ctk.CTkButton(
+            foot, text="Copy URL",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=ACCENT_LIGHT, text_color=ACCENT,
+            border_width=1, border_color=ACCENT,
+            hover_color="#1D3A8A", corner_radius=6,
+            height=34, width=90,
+            command=self._copy_url,
+            state="disabled",
+        )
+        self._copy_btn.pack(side="right", pady=(8, 0), padx=(0, 8))
+
+    def _generate(self):
+        try:
+            _ensure_pkg("qrcode")
+            import qrcode
+            from PIL import Image
+
+            item_id = self._item.get("id", "")
+            url = f"{API_BASE_URL}/equipment/{item_id}/history"
+            self._qr_url = url
+
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=9,
+                border=3,
+            )
+            qr.add_data(url)
+            qr.make(fit=True)
+            pil_img = qr.make_image(fill_color="#0F172A", back_color="#F1F5F9").convert("RGB")
+
+            self.after(0, lambda img=pil_img: self._show_qr(img))
+        except Exception as ex:
+            self.after(0, lambda e=str(ex): self._status_lbl.configure(
+                text=f"Error: {e}", text_color=DANGER
+            ))
+
+    def _show_qr(self, pil_img):
+        import customtkinter as ctk
+        self._status_lbl.destroy()
+
+        self._qr_ctk = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(270, 270))
+        ctk.CTkLabel(
+            self._img_frame, image=self._qr_ctk, text="",
+            fg_color="transparent",
+        ).pack(expand=True, pady=10)
+
+        short_url = self._qr_url
+        if len(short_url) > 55:
+            short_url = short_url[:52] + "..."
+        self._url_lbl.configure(text=short_url)
+        self._copy_btn.configure(state="normal")
+
+    def _copy_url(self):
+        url = getattr(self, "_qr_url", "")
+        self.clipboard_clear()
+        self.clipboard_append(url)
+        self._copy_btn.configure(text="Copied!")
+        self.after(2000, lambda: self._copy_btn.configure(text="Copy URL"))

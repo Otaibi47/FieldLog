@@ -13,6 +13,7 @@ _NAV = [
     ("equipment",   "Equipment"),
     ("maintenance", "Maintenance"),
     ("alerts",      "Alerts"),
+    ("audit",       "Audit Log"),
 ]
 
 
@@ -82,9 +83,10 @@ class Sidebar(ctk.CTkFrame):
             self._make_item(key, label, row=i + 3)
 
         # ── Spacer ────────────────────────────────────────────────────────────
-        self.grid_rowconfigure(7, weight=1)
+        spacer_row = len(_NAV) + 3
+        self.grid_rowconfigure(spacer_row, weight=1)
         ctk.CTkFrame(self, fg_color="transparent", corner_radius=0).grid(
-            row=7, column=0, sticky="nsew",
+            row=spacer_row, column=0, sticky="nsew",
         )
 
     def _make_item(self, key: str, label: str, row: int):

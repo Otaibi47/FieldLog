@@ -43,3 +43,15 @@ class MaintenanceLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     equipment: Mapped["Equipment"] = relationship("Equipment", back_populates="logs")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    action_type: Mapped[str] = mapped_column(String(50), nullable=False)   # created / updated / deleted / status_changed
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)   # equipment / maintenance_log
+    entity_id: Mapped[str] = mapped_column(String(36), nullable=True)
+    entity_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

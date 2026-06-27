@@ -71,3 +71,15 @@ class DashboardSummary(BaseModel):
     operational_count: int
     overdue_count: int
     logs_this_month: int
+
+
+class AuditLogResponse(BaseModel):
+    id: str
+    action_type: str
+    entity_type: str
+    entity_id: Optional[str]
+    entity_name: Optional[str]
+    description: str
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}

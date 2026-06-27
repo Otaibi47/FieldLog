@@ -10,6 +10,7 @@ from screens.dashboard import DashboardScreen
 from screens.equipment import EquipmentScreen
 from screens.maintenance import MaintenanceScreen
 from screens.alerts import AlertsScreen
+from screens.audit import AuditLogScreen
 from config import BG, BORDER
 
 ctk.set_appearance_mode("dark")
@@ -84,6 +85,7 @@ class FieldLogApp(ctk.CTk):
             "equipment":   EquipmentScreen,
             "maintenance": MaintenanceScreen,
             "alerts":      AlertsScreen,
+            "audit":       AuditLogScreen,
         }
         cls = cls_map.get(key)
         return cls(master=self.content_frame, api_client=self.api) if cls else ctk.CTkFrame(self.content_frame)
