@@ -124,6 +124,3 @@ Full interactive docs available at `/docs` (Swagger UI) when the backend is runn
 
 ---
 
-## CV Bullet
-
-> Built a full-stack desktop application for oil & gas equipment health monitoring, featuring a CustomTkinter GUI, FastAPI backend, cloud-hosted PostgreSQL database on Supabase, automated overdue alerts with email notifications via SendGrid, pytest test coverage, and CI/CD via GitHub Actions — deployed on Railway with live Swagger documentation.
