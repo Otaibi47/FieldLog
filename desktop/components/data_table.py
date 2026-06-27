@@ -1,12 +1,11 @@
 import customtkinter as ctk
-from config import SURFACE, BORDER, ACCENT, TEXT_PRIMARY, TEXT_SECONDARY, FONT_FAMILY
+from config import SURFACE, BORDER, ACCENT, TEXT_PRIMARY, FONT_FAMILY
 
-# Dark-mode table palette — lighter values float ABOVE SURFACE (#1E293B)
-_HEADER_BG   = "#1E3A5F"   # accent-blue header — clearly distinct from data rows
-_HEADER_TEXT = "#93C5FD"   # blue-300 — readable on dark blue, reinforces identity
-_ROW_ALT_BG  = "#243347"   # visibly lighter than SURFACE for zebra stripe
-_ROW_DIVIDER = "#2D3F5A"   # slightly brighter than BORDER for scannable row lines
-_ROW_HOVER   = "#2A4A70"   # bright blue — unmistakable hover state
+_HEADER_BG   = "#1E3A5F"
+_HEADER_TEXT = "#93C5FD"
+_ROW_ALT_BG  = "#243347"
+_ROW_DIVIDER = "#2D3F5A"
+_ROW_HOVER   = "#2A4A70"
 
 
 class DataTable(ctk.CTkScrollableFrame):
@@ -23,7 +22,6 @@ class DataTable(ctk.CTkScrollableFrame):
         self._build_header()
 
     def _build_header(self):
-        # 3px accent strip — visual anchor for the whole table
         ctk.CTkFrame(self, height=3, fg_color=ACCENT, corner_radius=0).pack(fill="x")
 
         hdr = ctk.CTkFrame(self, fg_color=_HEADER_BG, corner_radius=0)
@@ -57,28 +55,60 @@ class DataTable(ctk.CTkScrollableFrame):
         row.pack(fill="x")
         self._rows.append(row)
 
-        row.bind("<Enter>", lambda e, r=row: r.configure(fg_color=_ROW_HOVER))
-        row.bind("<Leave>", lambda e, r=row, b=bg: r.configure(fg_color=b))
+        # Enter: immediately paint hover.
+        # Leave: wait 10 ms then check if cursor is still anywhere inside the
+        # row widget tree — if yes, ignore (cursor moved onto a child widget).
+        def _enter(_e):
+            row.configure(fg_color=_ROW_HOVER)
+
+        def _leave(_e):
+            def _check():
+                try:
+                    w = row.winfo_containing(
+                        row.winfo_pointerx(), row.winfo_pointery()
+                    )
+                    if w is not None and str(w).startswith(str(row)):
+                        return          # cursor is still inside the row tree
+                    row.configure(fg_color=bg)
+                except Exception:
+                    row.configure(fg_color=bg)
+            row.after(10, _check)
+
+        def _bind(widget):
+            widget.bind("<Enter>", _enter)
+            widget.bind("<Leave>", _leave)
+
+        _bind(row)
 
         for i, (cell, (_, width)) in enumerate(zip(cells, self.columns)):
             padx = (12 if i == 0 else 8, 0)
 
             if isinstance(cell, str):
-                ctk.CTkLabel(
+                lbl = ctk.CTkLabel(
                     row,
                     text=cell,
                     width=width,
                     font=ctk.CTkFont(family=FONT_FAMILY, size=13),
                     text_color=TEXT_PRIMARY,
-                    fg_color=bg,
+                    fg_color="transparent",   # inherits row background on hover
                     anchor="w",
-                ).pack(side="left", padx=padx, pady=10)
+                )
+                lbl.pack(side="left", padx=padx, pady=10)
+                _bind(lbl)
 
             elif callable(cell):
-                cell_frame = ctk.CTkFrame(row, fg_color=bg, corner_radius=0, width=width)
+                cell_frame = ctk.CTkFrame(
+                    row, fg_color="transparent", corner_radius=0, width=width
+                )
                 cell_frame.pack(side="left", padx=padx, pady=6)
                 cell_frame.pack_propagate(False)
+                _bind(cell_frame)
                 cell(cell_frame)
+                # Bind grandchildren created by the cell builder
+                for child in cell_frame.winfo_children():
+                    _bind(child)
+                    for grandchild in child.winfo_children():
+                        _bind(grandchild)
 
         div = ctk.CTkFrame(self, height=1, fg_color=_ROW_DIVIDER, corner_radius=0)
         div.pack(fill="x")
