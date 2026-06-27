@@ -4,7 +4,7 @@ from components.data_table import DataTable
 from components.status_badge import StatusBadge
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    ACCENT, ACCENT_LIGHT, DANGER, FONT_FAMILY,
+    ACCENT, ACCENT_LIGHT, DANGER, DANGER_LIGHT, FONT_FAMILY,
 )
 
 
@@ -87,28 +87,33 @@ class EquipmentScreen(ctk.CTkFrame):
 
             def make_actions(it):
                 def _b(f):
-                    # Text-link style: CTkLabel + bindings (avoids CTkButton transparency bug)
-                    edit_lbl = ctk.CTkLabel(
+                    ctk.CTkButton(
                         f, text="Edit",
                         font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                        text_color=ACCENT, fg_color="transparent",
+                        fg_color=ACCENT_LIGHT,
+                        hover_color="#1D3A8A",
+                        border_width=1,
+                        border_color=ACCENT,
+                        text_color=ACCENT,
+                        corner_radius=6,
+                        height=28, width=58,
                         cursor="hand2",
-                    )
-                    edit_lbl.pack(side="left", padx=(0, 10))
-                    edit_lbl.bind("<Button-1>", lambda e, x=it: self._open_edit_form(x))
-                    edit_lbl.bind("<Enter>", lambda e, l=edit_lbl: l.configure(text_color="#1E40AF"))
-                    edit_lbl.bind("<Leave>", lambda e, l=edit_lbl: l.configure(text_color=ACCENT))
+                        command=lambda x=it: self._open_edit_form(x),
+                    ).pack(side="left", padx=(0, 6))
 
-                    del_lbl = ctk.CTkLabel(
+                    ctk.CTkButton(
                         f, text="Delete",
                         font=ctk.CTkFont(family=FONT_FAMILY, size=12),
-                        text_color=DANGER, fg_color="transparent",
+                        fg_color=DANGER_LIGHT,
+                        hover_color="#7F1D1D",
+                        border_width=1,
+                        border_color=DANGER,
+                        text_color=DANGER,
+                        corner_radius=6,
+                        height=28, width=62,
                         cursor="hand2",
-                    )
-                    del_lbl.pack(side="left")
-                    del_lbl.bind("<Button-1>", lambda e, x=it: self._confirm_delete(x))
-                    del_lbl.bind("<Enter>", lambda e, l=del_lbl: l.configure(text_color="#B91C1C"))
-                    del_lbl.bind("<Leave>", lambda e, l=del_lbl: l.configure(text_color=DANGER))
+                        command=lambda x=it: self._confirm_delete(x),
+                    ).pack(side="left")
                 return _b
 
             self._table.add_row([
