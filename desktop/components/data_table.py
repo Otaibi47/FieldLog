@@ -1,9 +1,9 @@
 import customtkinter as ctk
 from config import SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, FONT_FAMILY
 
-_HEADER_BG  = "#F3F4F6"
-_ROW_ALT_BG = "#F9FAFB"
-_ROW_HOVER  = "#F0F4FF"
+_HEADER_BG  = "#131D2E"   # darker header row
+_ROW_ALT_BG = "#172030"   # subtle alternate row
+_ROW_HOVER  = "#1E3A5F"   # blue tint on hover
 
 
 class DataTable(ctk.CTkScrollableFrame):

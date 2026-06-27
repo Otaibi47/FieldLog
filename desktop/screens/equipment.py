@@ -286,14 +286,14 @@ def _field(parent, label: str, placeholder: str = "", default: str = "") -> ctk.
     ctk.CTkLabel(
         parent, text=label,
         font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-        text_color="#374151", fg_color="transparent", anchor="w",
+        text_color=TEXT_PRIMARY, fg_color="transparent", anchor="w",
     ).pack(fill="x", padx=24, pady=(12, 2))
     e = ctk.CTkEntry(
         parent,
         placeholder_text=placeholder,
         font=ctk.CTkFont(family=FONT_FAMILY, size=13),
         fg_color=SURFACE,
-        border_color="#D1D5DB",
+        border_color=BORDER,
         border_width=1,
         corner_radius=6,
         height=38,
@@ -308,7 +308,7 @@ def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
     ctk.CTkLabel(
         parent, text=label,
         font=ctk.CTkFont(family=FONT_FAMILY, size=12, weight="bold"),
-        text_color="#374151", fg_color="transparent", anchor="w",
+        text_color=TEXT_PRIMARY, fg_color="transparent", anchor="w",
     ).pack(fill="x", padx=24, pady=(12, 2))
     var = ctk.StringVar(value=current)
     ctk.CTkOptionMenu(
@@ -317,8 +317,8 @@ def _dropdown(parent, label: str, values: list, current: str) -> ctk.StringVar:
         variable=var,
         font=ctk.CTkFont(family=FONT_FAMILY, size=13),
         fg_color=SURFACE,
-        button_color="#E5E7EB",
-        button_hover_color="#D1D5DB",
+        button_color=BORDER,
+        button_hover_color="#3D4F6B",
         text_color=TEXT_PRIMARY,
         dropdown_fg_color=SURFACE,
         dropdown_text_color=TEXT_PRIMARY,

@@ -69,7 +69,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             fg_color=SURFACE, text_color=DANGER,
             border_width=1, border_color=BORDER,
-            hover_color="#FEF2F2", corner_radius=6, height=32,
+            hover_color="#2D1515", corner_radius=6, height=32,
             command=self._export_pdf,
         ).pack(side="right", padx=(6, 0))
 
@@ -78,7 +78,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             font=ctk.CTkFont(family=FONT_FAMILY, size=12),
             fg_color=SURFACE, text_color=SUCCESS,
             border_width=1, border_color=BORDER,
-            hover_color="#F0FDF4", corner_radius=6, height=32,
+            hover_color="#0F2B1F", corner_radius=6, height=32,
             command=self._export_excel,
         ).pack(side="right", padx=(6, 0))
 
@@ -104,7 +104,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             fb, values=["All Equipment"],
             variable=self._eq_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=SURFACE, button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            fg_color=SURFACE, button_color=BORDER, button_hover_color="#3D4F6B",
             text_color=TEXT_PRIMARY, dropdown_fg_color=SURFACE,
             dropdown_text_color=TEXT_PRIMARY, dropdown_hover_color=ACCENT_LIGHT,
             corner_radius=6, height=32, width=170,
@@ -119,7 +119,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             values=["All Time", "Last 7 Days", "Last 30 Days", "Last 90 Days", "Custom Range"],
             variable=self._date_var,
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
-            fg_color=SURFACE, button_color="#E5E7EB", button_hover_color="#D1D5DB",
+            fg_color=SURFACE, button_color=BORDER, button_hover_color="#3D4F6B",
             text_color=TEXT_PRIMARY, dropdown_fg_color=SURFACE,
             dropdown_text_color=TEXT_PRIMARY, dropdown_hover_color=ACCENT_LIGHT,
             corner_radius=6, height=32, width=148,

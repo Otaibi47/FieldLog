@@ -2,7 +2,7 @@ import pathlib
 import customtkinter as ctk
 from PIL import Image
 from config import (
-    FONT_FAMILY, TEXT_PRIMARY, TEXT_SECONDARY,
+    FONT_FAMILY, TEXT_PRIMARY, TEXT_SECONDARY, BORDER,
     SIDEBAR_BG, SIDEBAR_HOVER, SIDEBAR_ACTIVE_BG,
     SIDEBAR_TEXT, SIDEBAR_TEXT_ACTIVE, SIDEBAR_RULE, SIDEBAR_LABEL,
     DANGER,
@@ -62,7 +62,7 @@ class Sidebar(ctk.CTkFrame):
 
         # ── Divider ───────────────────────────────────────────────────────────
         self.grid_rowconfigure(1, minsize=25)
-        ctk.CTkFrame(self, height=1, fg_color="#E5E7EB", corner_radius=0).grid(
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).grid(
             row=1, column=0, sticky="ew", padx=12, pady=(12, 12),
         )
 

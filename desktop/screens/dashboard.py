@@ -163,7 +163,7 @@ class DashboardScreen(ctk.CTkScrollableFrame):
             fg_color=DANGER_LIGHT,
             corner_radius=8,
             border_width=1,
-            border_color="#FECACA",
+            border_color="#7F1D1D",
         )
         card.pack(fill="x", pady=(0, 8))
 
