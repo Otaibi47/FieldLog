@@ -14,9 +14,10 @@ from config import (
 # ─────────────────────────── screen ──────────────────────────────────────────
 
 class EquipmentScreen(ctk.CTkFrame):
-    def __init__(self, master, api_client, **kwargs):
+    def __init__(self, master, api_client, on_data_change=None, **kwargs):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
+        self._on_data_change = on_data_change
         self._build()
 
     def _build(self):
@@ -184,10 +185,15 @@ class EquipmentScreen(ctk.CTkFrame):
     # ── actions ───────────────────────────────────────────────────────────────
 
     def _open_add_form(self):
-        EquipmentFormModal(self, self.api, on_save=self.refresh)
+        EquipmentFormModal(self, self.api, on_save=self._after_mutation)
 
     def _open_edit_form(self, item):
-        EquipmentFormModal(self, self.api, on_save=self.refresh, item=item)
+        EquipmentFormModal(self, self.api, on_save=self._after_mutation, item=item)
+
+    def _after_mutation(self):
+        self.refresh()
+        if self._on_data_change:
+            self._on_data_change()
 
     def _confirm_delete(self, item):
         dlg = ctk.CTkToplevel(self)
@@ -237,6 +243,8 @@ class EquipmentScreen(ctk.CTkFrame):
             except Exception:
                 pass
             self.after(0, self.refresh)
+            if self._on_data_change:
+                self.after(0, self._on_data_change)
         threading.Thread(target=_run, daemon=True).start()
 
 

@@ -88,7 +88,29 @@ class FieldLogApp(ctk.CTk):
             "audit":       AuditLogScreen,
         }
         cls = cls_map.get(key)
-        return cls(master=self.content_frame, api_client=self.api) if cls else ctk.CTkFrame(self.content_frame)
+        if cls is None:
+            return ctk.CTkFrame(self.content_frame)
+        if key == "equipment":
+            return EquipmentScreen(
+                master=self.content_frame,
+                api_client=self.api,
+                on_data_change=self._refresh_overdue_screens,
+            )
+        return cls(master=self.content_frame, api_client=self.api)
+
+    def _refresh_overdue_screens(self):
+        """Called after any equipment mutation to keep overdue data consistent."""
+        for key in ("dashboard", "alerts"):
+            screen = self._screens.get(key)
+            if screen and hasattr(screen, "refresh"):
+                screen.refresh()
+        def _badge():
+            try:
+                overdue = self.api.get_overdue()
+                self.after(0, lambda c=len(overdue): self.sidebar.set_alert_count(c))
+            except Exception:
+                pass
+        threading.Thread(target=_badge, daemon=True).start()
 
     def _check_alerts(self):
         def _load():
