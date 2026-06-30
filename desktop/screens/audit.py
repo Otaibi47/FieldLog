@@ -1,5 +1,6 @@
 import threading
 import customtkinter as ctk
+from datetime import date, timedelta
 from components.data_table import DataTable
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -35,7 +36,6 @@ class AuditLogScreen(ctk.CTkFrame):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
         self._all_logs: list[dict] = []
-        self._filter_action = "All"
         self._build()
 
     def _build(self):
@@ -56,10 +56,17 @@ class AuditLogScreen(ctk.CTkFrame):
             fill="x", pady=(16, 0)
         )
 
-        # ── Filter bar ────────────────────────────────────────────────────────
-        bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.pack(fill="x", padx=24, pady=(14, 0))
+        # ── Filter bar wrapper ─────────────────────────────────────────────────
+        # _wrap holds the main bar row + the optional custom date row so that
+        # pack_forget/pack on the custom row stays inside _wrap and never
+        # jumps below the table.
+        _wrap = ctk.CTkFrame(self, fg_color="transparent")
+        _wrap.pack(fill="x", padx=24, pady=(14, 0))
 
+        bar = ctk.CTkFrame(_wrap, fg_color="transparent")
+        bar.pack(fill="x")
+
+        # Action filter
         ctk.CTkLabel(
             bar, text="Action:",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
@@ -82,6 +89,35 @@ class AuditLogScreen(ctk.CTkFrame):
             command=lambda _: self._apply_filter(),
         ).pack(side="left")
 
+        # Separator pip
+        ctk.CTkFrame(bar, width=1, fg_color=BORDER, corner_radius=0).pack(
+            side="left", fill="y", padx=(12, 12)
+        )
+
+        # Date range filter
+        ctk.CTkLabel(
+            bar, text="Period:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(side="left", padx=(0, 8))
+
+        self._date_var = ctk.StringVar(value="All Time")
+        ctk.CTkOptionMenu(
+            bar,
+            values=["All Time", "Last 7 Days", "Last 30 Days", "Last 90 Days", "Custom Range"],
+            variable=self._date_var,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, button_color=BORDER,
+            button_hover_color="#3D4F6B",
+            text_color=TEXT_PRIMARY,
+            dropdown_fg_color=SURFACE,
+            dropdown_text_color=TEXT_PRIMARY,
+            corner_radius=6,
+            width=148, height=34,
+            command=self._on_date_change,
+        ).pack(side="left")
+
+        # Refresh button
         ctk.CTkButton(
             bar, text="Refresh",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
@@ -90,7 +126,7 @@ class AuditLogScreen(ctk.CTkFrame):
             text_color=TEXT_PRIMARY,
             corner_radius=6, height=34, width=90,
             command=self.refresh,
-        ).pack(side="left", padx=(10, 0))
+        ).pack(side="left", padx=(12, 0))
 
         self._count_label = ctk.CTkLabel(
             bar, text="",
@@ -98,6 +134,44 @@ class AuditLogScreen(ctk.CTkFrame):
             text_color=TEXT_SECONDARY, fg_color="transparent",
         )
         self._count_label.pack(side="right")
+
+        # ── Custom date row (hidden until "Custom Range" selected) ────────────
+        self._custom_row = ctk.CTkFrame(_wrap, fg_color="transparent")
+        # Not packed initially; shown in _on_date_change
+
+        ctk.CTkLabel(
+            self._custom_row, text="From:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(side="left", padx=(0, 4))
+        self._from_entry = ctk.CTkEntry(
+            self._custom_row, placeholder_text="YYYY-MM-DD",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, border_color=BORDER, border_width=1,
+            corner_radius=6, height=32, width=130,
+        )
+        self._from_entry.pack(side="left", padx=(0, 12))
+
+        ctk.CTkLabel(
+            self._custom_row, text="To:",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(side="left", padx=(0, 4))
+        self._to_entry = ctk.CTkEntry(
+            self._custom_row, placeholder_text="YYYY-MM-DD",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=13),
+            fg_color=SURFACE, border_color=BORDER, border_width=1,
+            corner_radius=6, height=32, width=130,
+        )
+        self._to_entry.pack(side="left", padx=(0, 12))
+
+        ctk.CTkButton(
+            self._custom_row, text="Apply",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=ACCENT, hover_color="#1E40AF", text_color="#FFFFFF",
+            corner_radius=6, height=32, width=70,
+            command=self._apply_filter,
+        ).pack(side="left")
 
         ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
             fill="x", pady=(12, 0)
@@ -116,7 +190,16 @@ class AuditLogScreen(ctk.CTkFrame):
         )
         self._table.pack(fill="both", expand=True, padx=24, pady=(0, 24))
 
-    # ── Data ──────────────────────────────────────────────────────────────────
+    # ── date range toggle ─────────────────────────────────────────────────────
+
+    def _on_date_change(self, value: str):
+        if value == "Custom Range":
+            self._custom_row.pack(fill="x", pady=(8, 0))
+        else:
+            self._custom_row.pack_forget()
+            self._apply_filter()
+
+    # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
         threading.Thread(target=self._load, daemon=True).start()
@@ -132,7 +215,12 @@ class AuditLogScreen(ctk.CTkFrame):
         self._all_logs = logs
         self._apply_filter()
 
+    # ── filtering ─────────────────────────────────────────────────────────────
+
     def _apply_filter(self):
+        result = self._all_logs[:]
+
+        # Action filter
         action = self._action_var.get()
         action_map = {
             "Created":        "created",
@@ -140,12 +228,41 @@ class AuditLogScreen(ctk.CTkFrame):
             "Deleted":        "deleted",
             "Status Changed": "status_changed",
         }
-        filtered = (
-            self._all_logs
-            if action == "All"
-            else [l for l in self._all_logs if l.get("action_type") == action_map.get(action)]
-        )
-        self._render(filtered)
+        if action != "All":
+            result = [l for l in result if l.get("action_type") == action_map.get(action)]
+
+        # Date range filter
+        dr = self._date_var.get()
+        today = date.today()
+        cutoff_from = cutoff_to = None
+
+        if dr == "Last 7 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=7), today
+        elif dr == "Last 30 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=30), today
+        elif dr == "Last 90 Days":
+            cutoff_from, cutoff_to = today - timedelta(days=90), today
+        elif dr == "Custom Range":
+            try:
+                cutoff_from = date.fromisoformat(self._from_entry.get().strip())
+                cutoff_to   = date.fromisoformat(self._to_entry.get().strip())
+            except ValueError:
+                cutoff_from = cutoff_to = None
+
+        if cutoff_from and cutoff_to:
+            filtered = []
+            for log in result:
+                raw = (log.get("timestamp") or "")[:10]
+                try:
+                    if cutoff_from <= date.fromisoformat(raw) <= cutoff_to:
+                        filtered.append(log)
+                except ValueError:
+                    pass
+            result = filtered
+
+        self._render(result)
+
+    # ── render ────────────────────────────────────────────────────────────────
 
     def _render(self, logs: list[dict]):
         self._table.clear_rows()
