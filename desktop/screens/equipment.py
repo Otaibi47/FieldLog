@@ -4,6 +4,7 @@ import threading
 import customtkinter as ctk
 from components.data_table import DataTable
 from components.status_badge import StatusBadge
+from components.loading import LoadingFrame, ErrorFrame
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
     ACCENT, ACCENT_LIGHT, DANGER, DANGER_LIGHT, FONT_FAMILY, API_BASE_URL,
@@ -49,8 +50,14 @@ class EquipmentScreen(ctk.CTkFrame):
             fill="x", pady=(16, 0)
         )
 
+        # Content area — table / loading / error share the same grid slot
+        _ca = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        _ca.pack(fill="both", expand=True)
+        _ca.grid_columnconfigure(0, weight=1)
+        _ca.grid_rowconfigure(0, weight=1)
+
         self._table = DataTable(
-            self,
+            _ca,
             columns=[
                 ("Name",     200),
                 ("Type",      95),
@@ -62,21 +69,49 @@ class EquipmentScreen(ctk.CTkFrame):
             ],
             height=520,
         )
-        self._table.pack(fill="both", expand=True, padx=24, pady=(16, 24))
+        self._table.grid(row=0, column=0, sticky="nsew", padx=24, pady=(16, 24))
+        self._table.grid_remove()
+
+        self._loading = LoadingFrame(_ca, "Loading equipment")
+        self._loading.grid(row=0, column=0, sticky="nsew")
+
+        self._error_frame = ErrorFrame(_ca, on_retry=self.refresh)
+        self._error_frame.grid(row=0, column=0, sticky="nsew")
+        self._error_frame.grid_remove()
+
+    # ── loading / error helpers ───────────────────────────────────────────────
+
+    def _show_loading(self):
+        self._error_frame.grid_remove()
+        self._table.grid_remove()
+        self._loading.grid()
+        self._loading.start()
+
+    def _show_error(self):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._table.grid_remove()
+        self._error_frame.grid()
 
     # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
+        self._show_loading()
         threading.Thread(target=self._load, daemon=True).start()
 
     def _load(self):
         try:
             items = self.api.get_equipment()
         except Exception:
-            items = []
+            self.after(0, self._show_error)
+            return
         self.after(0, lambda d=items: self._render(d))
 
     def _render(self, items):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._error_frame.grid_remove()
+        self._table.grid()
         self._table.clear_rows()
         if not items:
             return

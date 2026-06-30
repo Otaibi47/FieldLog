@@ -2,49 +2,65 @@ import threading
 import customtkinter as ctk
 from components.stat_card import StatCard
 from components.data_table import DataTable
+from components.loading import LoadingFrame, ErrorFrame
 from config import (
-    BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
+    BG, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
     ACCENT, SUCCESS, WARNING, DANGER, DANGER_LIGHT, FONT_FAMILY,
 )
 
 
-class DashboardScreen(ctk.CTkScrollableFrame):
+class DashboardScreen(ctk.CTkFrame):
     def __init__(self, master, api_client, **kwargs):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
         self._build()
 
     def _build(self):
-        self._build_header()
-        self._build_stat_cards()
-        self._build_recent_section()
-        self._build_alerts_section()
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(2, weight=1)
 
-    # ── header ────────────────────────────────────────────────────────────────
-
-    def _build_header(self):
-        wrap = ctk.CTkFrame(self, fg_color="transparent")
-        wrap.pack(fill="x", padx=24, pady=(28, 0))
-
+        # ── Row 0: page header ─────────────────────────────────────────────
+        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=(28, 0))
         ctk.CTkLabel(
-            wrap, text="Dashboard",
+            hdr, text="Dashboard",
             font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
             text_color=TEXT_PRIMARY, fg_color="transparent",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            wrap, text="Overview of equipment health and recent activity",
+            hdr, text="Overview of equipment health and recent activity",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13),
             text_color=TEXT_SECONDARY, fg_color="transparent",
         ).pack(anchor="w", pady=(2, 0))
 
-        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).pack(
-            fill="x", pady=(16, 0)
+        # ── Row 1: divider ─────────────────────────────────────────────────
+        ctk.CTkFrame(self, height=1, fg_color=BORDER, corner_radius=0).grid(
+            row=1, column=0, sticky="ew", pady=(16, 0)
         )
+
+        # ── Row 2: scrollable content (hidden until data arrives) ──────────
+        self._content = ctk.CTkScrollableFrame(self, fg_color=BG, corner_radius=0)
+        self._content.grid(row=2, column=0, sticky="nsew")
+        self._content.grid_remove()
+
+        # ── Row 2: loading (shown on first navigation) ─────────────────────
+        self._loading = LoadingFrame(self, "Loading dashboard")
+        self._loading.grid(row=2, column=0, sticky="nsew")
+
+        # ── Row 2: error (shown on API failure) ────────────────────────────
+        self._error_frame = ErrorFrame(self, on_retry=self.refresh)
+        self._error_frame.grid(row=2, column=0, sticky="nsew")
+        self._error_frame.grid_remove()
+
+        # Build content structure inside _content (not yet visible)
+        self._build_stat_cards()
+        self._build_recent_section()
+        self._build_alerts_section()
 
     # ── stat cards ────────────────────────────────────────────────────────────
 
     def _build_stat_cards(self):
-        grid = ctk.CTkFrame(self, fg_color="transparent")
+        grid = ctk.CTkFrame(self._content, fg_color="transparent")
         grid.pack(fill="x", padx=24, pady=(20, 0))
         for i in range(4):
             grid.columnconfigure(i, weight=1)
@@ -75,7 +91,7 @@ class DashboardScreen(ctk.CTkScrollableFrame):
         self._section_label("Recent Maintenance", pady=(28, 10))
 
         self._recent_table = DataTable(
-            self,
+            self._content,
             columns=[
                 ("Equipment",    180),
                 ("Type",         100),
@@ -91,27 +107,48 @@ class DashboardScreen(ctk.CTkScrollableFrame):
 
     def _build_alerts_section(self):
         self._section_label("Overdue Alerts", pady=(28, 10), color=DANGER)
-        self._alerts_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._alerts_frame = ctk.CTkFrame(self._content, fg_color="transparent")
         self._alerts_frame.pack(fill="x", padx=24, pady=(0, 28))
 
     def _section_label(self, text: str, pady=(24, 8), color=TEXT_PRIMARY):
         ctk.CTkLabel(
-            self, text=text,
+            self._content, text=text,
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=color, fg_color="transparent",
         ).pack(anchor="w", padx=24, pady=pady)
 
+    # ── loading / error helpers ───────────────────────────────────────────────
+
+    def _show_loading(self):
+        self._error_frame.grid_remove()
+        self._content.grid_remove()
+        self._loading.grid()
+        self._loading.start()
+
+    def _show_error(self):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._content.grid_remove()
+        self._error_frame.grid()
+
+    def _show_content(self):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._error_frame.grid_remove()
+        self._content.grid()
+
     # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
+        self._show_loading()
         threading.Thread(target=self._load, daemon=True).start()
 
     def _load(self):
-        summary = logs = overdue = None
         try:
             summary = self.api.get_dashboard_summary()
         except Exception:
-            pass
+            self.after(0, self._show_error)
+            return
         try:
             logs = self.api.get_maintenance_logs()[:5]
         except Exception:
@@ -123,6 +160,8 @@ class DashboardScreen(ctk.CTkScrollableFrame):
         self.after(0, lambda: self._render(summary, logs, overdue))
 
     def _render(self, summary, logs, overdue):
+        self._show_content()
+
         if summary:
             self._card_total.update_value(str(summary["total_equipment"]))
             self._card_op.update_value(str(summary["operational_count"]))
@@ -167,7 +206,6 @@ class DashboardScreen(ctk.CTkScrollableFrame):
         )
         card.pack(fill="x", pady=(0, 8))
 
-        # Signature 3px left rule
         rule = ctk.CTkFrame(card, width=3, fg_color=DANGER, corner_radius=0)
         rule.pack(side="left", fill="y")
         rule.pack_propagate(False)

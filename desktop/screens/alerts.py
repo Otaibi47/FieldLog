@@ -1,6 +1,7 @@
 import threading
 import customtkinter as ctk
 from screens.maintenance import MaintenanceFormModal
+from components.loading import LoadingFrame, ErrorFrame
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
     ACCENT, ACCENT_LIGHT, SUCCESS, DANGER, DANGER_LIGHT, FONT_FAMILY,
@@ -69,7 +70,11 @@ class AlertsScreen(ctk.CTkFrame):
             text_color=DANGER, fg_color="transparent", anchor="w",
         ).pack(fill="x", pady=(1, 0))
 
-        # ── Row 3: scrollable cards area (hidden until items exist) ────────
+        # ── Row 3: loading (shown first on every navigation) ──────────────
+        self._loading = LoadingFrame(self, "Loading alerts")
+        self._loading.grid(row=3, column=0, sticky="nsew")
+
+        # ── Row 3: scrollable cards (hidden until data arrives) ────────────
         self._cards_scroll = ctk.CTkScrollableFrame(
             self, fg_color=BG, corner_radius=0
         )
@@ -82,6 +87,11 @@ class AlertsScreen(ctk.CTkFrame):
         self._empty = ctk.CTkFrame(self, fg_color="transparent")
         self._empty.grid(row=3, column=0, sticky="nsew")
         self._empty.grid_remove()
+
+        # ── Row 3: error state (same slot) ────────────────────────────────
+        self._error_frame = ErrorFrame(self, on_retry=self.refresh)
+        self._error_frame.grid(row=3, column=0, sticky="nsew")
+        self._error_frame.grid_remove()
 
         ctk.CTkLabel(
             self._empty, text="✓",
@@ -99,16 +109,36 @@ class AlertsScreen(ctk.CTkFrame):
             text_color=TEXT_SECONDARY, fg_color="transparent",
         ).pack()
 
+    # ── loading / error helpers ───────────────────────────────────────────────
+
+    def _show_loading(self):
+        self._error_frame.grid_remove()
+        self._banner.grid_remove()
+        self._cards_scroll.grid_remove()
+        self._empty.grid_remove()
+        self._loading.grid()
+        self._loading.start()
+
+    def _show_error(self):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._banner.grid_remove()
+        self._cards_scroll.grid_remove()
+        self._empty.grid_remove()
+        self._error_frame.grid()
+
     # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
+        self._show_loading()
         threading.Thread(target=self._load, daemon=True).start()
 
     def _load(self):
         try:
             items = self.api.get_overdue()
         except Exception:
-            items = []
+            self.after(0, self._show_error)
+            return
         try:
             eq = self.api.get_equipment()
         except Exception:
@@ -126,6 +156,9 @@ class AlertsScreen(ctk.CTkFrame):
         self._card_widgets.clear()
 
     def _render(self, items: list[dict], eq: list[dict]):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._error_frame.grid_remove()
         self._equipment_list = eq
         self._clear_cards()
 

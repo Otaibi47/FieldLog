@@ -4,6 +4,7 @@ import customtkinter as ctk
 from datetime import datetime, date, timedelta
 from tkinter import filedialog, messagebox
 from components.data_table import DataTable
+from components.loading import LoadingFrame, ErrorFrame
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
     ACCENT, ACCENT_LIGHT, SUCCESS, DANGER, FONT_FAMILY,
@@ -170,7 +171,7 @@ class MaintenanceScreen(ctk.CTkFrame):
             row=4, column=0, sticky="ew", pady=(12, 0)
         )
 
-        # ── Row 5: table ───────────────────────────────────────────────────
+        # ── Row 5: table / loading / error (shared slot) ──────────────────
         self._table = DataTable(
             self,
             columns=[
@@ -183,6 +184,14 @@ class MaintenanceScreen(ctk.CTkFrame):
             height=480,
         )
         self._table.grid(row=5, column=0, sticky="nsew", padx=24, pady=(16, 24))
+        self._table.grid_remove()
+
+        self._loading = LoadingFrame(self, "Loading maintenance logs")
+        self._loading.grid(row=5, column=0, sticky="nsew")
+
+        self._error_frame = ErrorFrame(self, on_retry=self.refresh)
+        self._error_frame.grid(row=5, column=0, sticky="nsew")
+        self._error_frame.grid_remove()
 
     # ── date range toggle ─────────────────────────────────────────────────────
 
@@ -193,23 +202,43 @@ class MaintenanceScreen(ctk.CTkFrame):
             self._custom_row.grid_remove()
             self._apply_and_render()
 
+    # ── loading / error helpers ───────────────────────────────────────────────
+
+    def _show_loading(self):
+        self._error_frame.grid_remove()
+        self._table.grid_remove()
+        self._loading.grid()
+        self._loading.start()
+
+    def _show_error(self):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._table.grid_remove()
+        self._error_frame.grid()
+
     # ── data ──────────────────────────────────────────────────────────────────
 
     def refresh(self):
+        self._show_loading()
         threading.Thread(target=self._fetch_all, daemon=True).start()
 
     def _fetch_all(self):
         try:
+            logs = self.api.get_maintenance_logs()
+        except Exception:
+            self.after(0, self._show_error)
+            return
+        try:
             eq = self.api.get_equipment()
         except Exception:
             eq = []
-        try:
-            logs = self.api.get_maintenance_logs()   # fetch all; filter client-side
-        except Exception:
-            logs = []
         self.after(0, lambda: self._on_loaded(eq, logs))
 
     def _on_loaded(self, eq: list, logs: list):
+        self._loading.stop()
+        self._loading.grid_remove()
+        self._error_frame.grid_remove()
+        self._table.grid()
         self._equipment_list = eq
         self._all_logs = logs
         names = ["All Equipment"] + [e["name"] for e in eq]
