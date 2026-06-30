@@ -1,27 +1,34 @@
 import threading
 import customtkinter as ctk
-from components.data_table import DataTable
+from screens.maintenance import MaintenanceFormModal
 from config import (
     BG, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
-    SUCCESS, DANGER, DANGER_LIGHT, FONT_FAMILY, FONT_MONO,
+    ACCENT, ACCENT_LIGHT, SUCCESS, DANGER, DANGER_LIGHT, FONT_FAMILY,
 )
+
+# Severity tiers in display order: (label, border_color, badge_bg, predicate)
+_TIERS = [
+    ("Critical", "#DC2626", "#2D1515", lambda d: d >= 61),
+    ("High",     "#EA580C", "#2D1A08", lambda d: 31 <= d <= 60),
+    ("Moderate", "#D97706", "#2D2008", lambda d: 1  <= d <= 30),
+]
 
 
 class AlertsScreen(ctk.CTkFrame):
     def __init__(self, master, api_client, **kwargs):
         super().__init__(master, fg_color=BG, **kwargs)
         self.api = api_client
+        self._equipment_list: list[dict] = []
+        self._card_widgets:   list       = []   # top-level widgets in _cards_scroll
         self._build()
 
     def _build(self):
-        # Use grid internally so grid_remove()/grid() preserve row positions
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1)   # table / empty row expands
+        self.grid_rowconfigure(3, weight=1)   # cards / empty row expands
 
         # ── Row 0: page header ─────────────────────────────────────────────
         hdr = ctk.CTkFrame(self, fg_color="transparent")
         hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=(28, 0))
-
         ctk.CTkLabel(
             hdr, text="Overdue Equipment",
             font=ctk.CTkFont(family=FONT_FAMILY, size=20, weight="bold"),
@@ -38,10 +45,10 @@ class AlertsScreen(ctk.CTkFrame):
             row=1, column=0, sticky="ew", pady=(16, 0)
         )
 
-        # ── Row 2: red banner (hidden until items exist) ───────────────────
+        # ── Row 2: red alert banner (hidden until items exist) ─────────────
         self._banner = ctk.CTkFrame(self, fg_color=DANGER_LIGHT, corner_radius=0)
         self._banner.grid(row=2, column=0, sticky="ew", padx=24, pady=(12, 0))
-        self._banner.grid_remove()   # hidden; grid_remove preserves row slot
+        self._banner.grid_remove()
 
         rule = ctk.CTkFrame(self._banner, width=4, fg_color=DANGER, corner_radius=0)
         rule.pack(side="left", fill="y")
@@ -49,7 +56,6 @@ class AlertsScreen(ctk.CTkFrame):
 
         banner_body = ctk.CTkFrame(self._banner, fg_color="transparent")
         banner_body.pack(side="left", fill="both", expand=True, padx=14, pady=10)
-
         self._banner_title = ctk.CTkLabel(
             banner_body, text="",
             font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
@@ -63,21 +69,16 @@ class AlertsScreen(ctk.CTkFrame):
             text_color=DANGER, fg_color="transparent", anchor="w",
         ).pack(fill="x", pady=(1, 0))
 
-        # ── Row 3: data table ──────────────────────────────────────────────
-        self._table = DataTable(
-            self,
-            columns=[
-                ("Equipment Name", 210),
-                ("Location",       155),
-                ("Due Date",       105),
-                ("Days Overdue",   120),
-                ("Last Maintained",135),
-            ],
-            height=460,
+        # ── Row 3: scrollable cards area (hidden until items exist) ────────
+        self._cards_scroll = ctk.CTkScrollableFrame(
+            self, fg_color=BG, corner_radius=0
         )
-        self._table.grid(row=3, column=0, sticky="nsew", padx=24, pady=(16, 24))
+        self._cards_scroll.grid(
+            row=3, column=0, sticky="nsew", padx=24, pady=(16, 24)
+        )
+        self._cards_scroll.grid_remove()
 
-        # ── Row 3: empty state (same slot, hidden until no items) ──────────
+        # ── Row 3: empty state (same slot, toggled vs cards) ───────────────
         self._empty = ctk.CTkFrame(self, fg_color="transparent")
         self._empty.grid(row=3, column=0, sticky="nsew")
         self._empty.grid_remove()
@@ -108,42 +109,159 @@ class AlertsScreen(ctk.CTkFrame):
             items = self.api.get_overdue()
         except Exception:
             items = []
-        self.after(0, lambda d=items: self._render(d))
+        try:
+            eq = self.api.get_equipment()
+        except Exception:
+            eq = []
+        self.after(0, lambda i=items, e=eq: self._render(i, e))
 
-    def _render(self, items):
-        if items:
-            count = len(items)
-            noun = "item" if count == 1 else "items"
-            self._banner_title.configure(
-                text=f"{count} {noun} require immediate maintenance attention"
-            )
-            self._banner.grid()       # restore to row 2
-            self._empty.grid_remove()
-            self._table.grid()        # restore to row 3
-        else:
+    # ── render ────────────────────────────────────────────────────────────────
+
+    def _clear_cards(self):
+        for w in self._card_widgets:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+        self._card_widgets.clear()
+
+    def _render(self, items: list[dict], eq: list[dict]):
+        self._equipment_list = eq
+        self._clear_cards()
+
+        if not items:
             self._banner.grid_remove()
-            self._table.grid_remove()
-            self._empty.grid()        # restore to row 3
+            self._cards_scroll.grid_remove()
+            self._empty.grid()
             return
 
-        self._table.clear_rows()
-        for i, item in enumerate(items):
-            days = str(item.get("days_overdue", "—"))
+        count = len(items)
+        self._banner_title.configure(
+            text=f"{count} {'item' if count == 1 else 'items'} "
+                 f"require immediate maintenance attention"
+        )
+        self._banner.grid()
+        self._empty.grid_remove()
+        self._cards_scroll.grid()
 
-            def make_days(d):
-                def _b(f):
-                    ctk.CTkLabel(
-                        f, text=d,
-                        font=ctk.CTkFont(family=FONT_MONO, size=14, weight="bold"),
-                        text_color=DANGER, fg_color="transparent",
-                        anchor="center",
-                    ).pack(fill="both", expand=True, pady=6)
-                return _b
+        first_tier = True
+        for tier_name, tier_color, badge_bg, pred in _TIERS:
+            tier_items = [i for i in items if pred(i.get("days_overdue", 0))]
+            if not tier_items:
+                continue
 
-            self._table.add_row([
-                item.get("name", "—"),
-                item.get("location", "—"),
-                item.get("next_maintenance_due", "—"),
-                make_days(days),
-                item.get("last_maintenance_date") or "Never",
-            ], even=(i % 2 == 1))
+            # Section header — 24px gap between tiers achieved by
+            # 12px card bottom-padding + 12px header top-padding
+            top_pad = 0 if first_tier else 12
+            first_tier = False
+
+            lbl = ctk.CTkLabel(
+                self._cards_scroll,
+                text=f"{tier_name}  ({len(tier_items)})",
+                font=ctk.CTkFont(family=FONT_FAMILY, size=13, weight="bold"),
+                text_color=tier_color, fg_color="transparent",
+                anchor="w",
+            )
+            lbl.pack(fill="x", pady=(top_pad, 8))
+            self._card_widgets.append(lbl)
+
+            for item in tier_items:
+                self._make_card(item, tier_name, tier_color, badge_bg)
+
+    def _make_card(self, item: dict, tier: str, tier_color: str, badge_bg: str):
+        days      = item.get("days_overdue", 0)
+        name      = item.get("name", "—")
+        location  = item.get("location", "—")
+        last_maint = item.get("last_maintenance_date") or "Never"
+
+        # ── Outer card ────────────────────────────────────────────────────
+        card = ctk.CTkFrame(
+            self._cards_scroll,
+            fg_color=SURFACE,
+            corner_radius=8,
+            border_width=1,
+            border_color=tier_color,
+        )
+        card.pack(fill="x", pady=(0, 12))
+        self._card_widgets.append(card)
+
+        # ── Left accent strip (4px) ───────────────────────────────────────
+        strip = ctk.CTkFrame(card, width=4, fg_color=tier_color, corner_radius=0)
+        strip.pack(side="left", fill="y")
+        strip.pack_propagate(False)
+
+        # ── Right: day count (packed before content → takes side="right") ─
+        right = ctk.CTkFrame(card, fg_color="transparent")
+        right.pack(side="right", padx=(0, 24), pady=16)
+
+        ctk.CTkLabel(
+            right,
+            text=str(days),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=36, weight="bold"),
+            text_color=tier_color, fg_color="transparent",
+        ).pack(anchor="center")
+        ctk.CTkLabel(
+            right,
+            text="days overdue",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=11),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+        ).pack(anchor="center", pady=(2, 0))
+
+        # ── Content area (fills remaining width) ─────────────────────────
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(side="left", fill="both", expand=True, padx=(14, 0), pady=16)
+
+        # Top row: equipment name + severity badge
+        top_row = ctk.CTkFrame(content, fg_color="transparent")
+        top_row.pack(fill="x")
+
+        # Badge packed first so it holds its right position even with long names
+        badge_frame = ctk.CTkFrame(top_row, fg_color=badge_bg, corner_radius=4)
+        badge_frame.pack(side="right")
+        ctk.CTkLabel(
+            badge_frame,
+            text=tier.upper(),
+            font=ctk.CTkFont(family=FONT_FAMILY, size=10, weight="bold"),
+            text_color=tier_color, fg_color="transparent",
+        ).pack(padx=8, pady=3)
+
+        ctk.CTkLabel(
+            top_row,
+            text=name,
+            font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold"),
+            text_color=TEXT_PRIMARY, fg_color="transparent",
+        ).pack(side="left", fill="x", expand=True)
+
+        # Meta row: location · last maintained
+        ctk.CTkLabel(
+            content,
+            text=f"{location}  ·  Last maintained: {last_maint}",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            text_color=TEXT_SECONDARY, fg_color="transparent",
+            anchor="w",
+        ).pack(fill="x", pady=(6, 0))
+
+        # Log Maintenance button
+        ctk.CTkButton(
+            content,
+            text="Log Maintenance",
+            font=ctk.CTkFont(family=FONT_FAMILY, size=12),
+            fg_color=ACCENT_LIGHT,
+            hover_color="#1D3A8A",
+            border_width=1,
+            border_color=ACCENT,
+            text_color=ACCENT,
+            corner_radius=6,
+            height=28, width=130,
+            command=lambda n=name: self._open_log_modal(n),
+        ).pack(anchor="w", pady=(10, 0))
+
+    def _open_log_modal(self, equipment_name: str):
+        if not self._equipment_list:
+            return
+        # Place the target equipment first so the modal pre-selects it
+        eq = sorted(
+            self._equipment_list,
+            key=lambda e: 0 if e.get("name") == equipment_name else 1,
+        )
+        MaintenanceFormModal(self, self.api, eq, on_save=self.refresh)
